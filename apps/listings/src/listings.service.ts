@@ -9,6 +9,7 @@ import { CATEGORY_FIELDS } from '../conf/categories.config';
 import { CATEGORY_KEYWORDS } from '../conf/categoryKeywords.config';
 import { checkAtributes } from '../utils/utils';
 import { GetListingsQueryParams } from '../dto/getListingsQueryParams.dto';
+import { UdpdateLikeDto } from '../dto/updateLike.dto';
 
 @Injectable()
 export class ListingsService {
@@ -120,8 +121,12 @@ export class ListingsService {
     await this.listingsRepository.update({id}, {active: "active"})
   }
 
-  async updateLikeListing(id:string) {
-    await this.listingsRepository.increment({id}, 'likes', 1)
+  async updateLikeListing(dto:UdpdateLikeDto) {
+    if (dto.make === "increment") {
+      await this.listingsRepository.increment({id: dto.listingId}, 'likes', 1)
+    } else {
+      await this.listingsRepository.decrement({id: dto.listingId}, 'likes', 1)
+    }
   }
 
   

@@ -35,13 +35,13 @@ export class Listings {
     @Column({ nullable: true })
     listing_phone?:string
 
-    @Column({ nullable: true })
+    @Column({ default: 0 })
     views?:number
 
-    @Column({ nullable: true })
+    @Column({ default: 0 })
     likes?:number
 
-    @Column({ nullable: true })
+    @Column({ default: 0 })
     chates?:number
 
     @CreateDateColumn()

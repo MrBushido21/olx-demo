@@ -1,4 +1,4 @@
-import { Body, Controller, Patch, Post, Put, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Param, Patch, Post, Put, Req, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { CreateUserDto } from '../dto/create-user.dto';
@@ -30,6 +30,20 @@ export class UsersController {
   handleUserUpdateUserInfo(@Payload() data: {id:string, newUser:CreateUserDto}) {
     return this.usersService.updateUserInfo(data.id, data.newUser)
   }
+
+  //POST
+
+  @Post('like')
+    async likeListing(
+      @Body('listingId') listingId: string,                                                                          
+      @Req() req:Request
+  ) {
+      const userId = getUserId(req)
+      const result = await this.usersService.likeListing(listingId, userId)
+      return result ? "Вы добавили в понравившееся" : "Вы убрали из понравившегося"
+    }
+
+  //PATCH
 
     @Patch('changeuserinfo')  
   async changeuserinfo(

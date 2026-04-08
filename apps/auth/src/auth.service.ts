@@ -27,7 +27,7 @@ export class AuthService {
     @InjectRepository(UserResetTokens)
     private resetRepository: Repository<UserResetTokens>,
 
-    @Inject('USERS_SERVICE')
+    @Inject('AUTH_SERVICE')
     private usersClient: ClientProxy,
   ) { }
 

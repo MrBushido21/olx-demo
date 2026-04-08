@@ -18,12 +18,12 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
     ),
     TypeOrmModule.forFeature([UserRefreshTokens, UserVerifyCodes, UserResetTokens]),
     ClientsModule.registerAsync([{
-      name: 'USERS_SERVICE',
+      name: 'AUTH_SERVICE',
       useFactory: (configService: ConfigService) => ({
         transport: Transport.RMQ,
         options: {
           urls: [configService.get<string>('RABBITMQ_URL', '')],
-          queue: 'users_queue',
+          queue: 'auth_queue',
           queueOptions: { durable: true },
         },
       }),

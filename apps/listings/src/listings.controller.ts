@@ -3,12 +3,19 @@ import { ListingsService } from './listings.service';
 import type {Response, Request } from 'express';
 import { CreateListingDto } from '../dto/createlisting.dto';
 import { getUserId } from '@app/common';
+import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
+import { UdpdateLikeDto } from '../dto/updateLike.dto';
 
 @Controller('listings')
 export class ListingsController {
   constructor(private readonly listingsService: ListingsService) {}
-  //GET
+  //MessagePattern
+  @EventPattern('listing.updateLike')
+    handleUserCreated(@Payload() data: UdpdateLikeDto) {
+      return this.listingsService.updateLikeListing(data)
+  }
 
+  //GET
   // GET /listings/my-categories
   @Get('my-categories') 
   getCategories(
@@ -87,14 +94,6 @@ export class ListingsController {
     const userId = getUserId(req)
     await this.listingsService.hiddenListing(id, userId)
     return "Объявление теперь неактивно"
-  }
-
-  @Patch('like/:id')
-  async updateLikeListing(
-    @Param('id') id: string,                                                                             
-  ) {
-    await this.listingsService.updateLikeListing(id)
-    return "Вы добавили в понравившееся" 
   }
 
   @Put('activate/:id')
