@@ -152,29 +152,6 @@ export class AuthService {
     return jwtTokens
   }
 
-  //change user info
-
-  async changeuserinfo(dto: ChangeUserInfoDto, userId: string) {
-    // Нельзя сохранять пустые данные если были не пустые
-    const user = await firstValueFrom(
-      this.usersClient.send('user.findById', {id: userId}).pipe(timeout(10000))
-    )
-    if (!user) {
-      console.error('auth/changeuserinfo/service user is undefined');
-      throw new UnauthorizedException('Неопознаный пользователь')
-    }
-    const newUser = {
-      username: dto.username ? dto.username : user.username,
-      location: dto.location ? dto.location : user.location,
-      phone: dto.phone ? dto.phone : user.phone,
-      avatar: dto.avatar ? dto.avatar : user.avatar,
-    }
-
-    await firstValueFrom(
-      this.usersClient.send('user.updateUserInfo', {id: userId, newUser}).pipe(timeout(10000))
-    )
-  }
-
   async logout(refreshToken:string) {
     this.refreshRepository.delete({refreshToken})
   }

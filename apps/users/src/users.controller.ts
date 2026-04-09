@@ -1,10 +1,11 @@
-import { Body, Controller, Param, Patch, Post, Put, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Param, Patch, Post, Put, Req, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { ChangeUserInfoDto } from '../dto/changeuserinfo.dto';
 import { getUserId } from '@app/common';
 import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('users')
 export class UsersController {
@@ -26,10 +27,6 @@ export class UsersController {
   handleUserUpdatePass(@Payload() data: {id:string, password:string}) {
     return this.usersService.updatePass(data.id, data.password)
   }
-  @MessagePattern('user.updateUserInfo')
-  handleUserUpdateUserInfo(@Payload() data: {id:string, newUser:CreateUserDto}) {
-    return this.usersService.updateUserInfo(data.id, data.newUser)
-  }
 
   //POST
 
@@ -46,16 +43,20 @@ export class UsersController {
   //PATCH
 
     @Patch('changeuserinfo')  
+    @UseInterceptors(FileInterceptor('avatar'))
   async changeuserinfo(
     @Body() body:ChangeUserInfoDto,
-    @Req() req:Request
+    @Req() req:Request,
+    @UploadedFile() file: Express.Multer.File
   ) {
+    console.log(file);
+    
     const userId = getUserId(req)
     if (!userId) {
-      console.error('auth/changeuserinfo userId is undefined');   
+      console.error('users/changeuserinfo userId is undefined');   
       throw new UnauthorizedException('Неопознаный пользователь')
     }
-    await this.usersService.changeuserinfo(body, userId)
-    return "Данные упешно обновлены"
+
+    return await this.usersService.changeuserinfo(body, file, userId)
   }
 }

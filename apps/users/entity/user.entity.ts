@@ -3,33 +3,36 @@
    @Entity()
    export class Users {
      @PrimaryGeneratedColumn("uuid")
-     id: string;
+     id!: string;
 
      @Column()
-     username: string;
+     username!: string;
 
      @Column({unique:true})
-     email: string;
+     email!: string;
 
      @Column()
-     password: string;
+     password!: string;
 
      @Column()
-     role: string;
+     role!: string;
 
      @Column()
-     status: string;
+     status!: string;
 
      @Column({ nullable: true })
      
-     phone: string;
+     phone!: string;
 
      @Column({ nullable: true })
-     location: string;
+     location!: string;
 
      @Column({ nullable: true })
-     avatar: string;
+     avatar_url?: string;
+
+     @Column({ nullable: true })
+     avatar_public_id?: string;
 
      @CreateDateColumn({type:'date'})
-      created_at: Date;
+      created_at!: Date;
    }

@@ -10,7 +10,4 @@ export class ChangeUserInfoDto {
 
     @IsString()
     phone?:string
-
-    @IsString()
-    avatar?:string
 }

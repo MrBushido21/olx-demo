@@ -8,6 +8,9 @@ import { Users } from '../entity/user.entity';
 import { CheckAuthMiddleware } from 'libs/common/middleware/checkauth.middleware';
 import { FavoritesEntity } from '../entity/favorites.entity';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { MulterModule } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { CloudinaryProvider } from '../providers/cloudinary';
 
 @Module({
   imports: [
@@ -26,9 +29,18 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
           }),
           inject: [ConfigService],
         }]),
+    MulterModule.register({
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, cb) => {
+          const filename = `${Date.now()}-${file.originalname}`;
+          cb(null, filename);
+        },
+      }),
+    }),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService, CloudinaryProvider],
 })
 export class UsersModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

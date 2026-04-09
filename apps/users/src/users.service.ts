@@ -7,6 +7,8 @@ import { ChangeUserInfoDto } from '../dto/changeuserinfo.dto';
 import { FavoritesEntity } from '../entity/favorites.entity';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
+import { uploadImageToCloudinary } from '../config/cloudinary';
+import { UploadApiResponse } from 'cloudinary';
 
 @Injectable()
 export class UsersService {
@@ -38,14 +40,10 @@ export class UsersService {
     const user = await this.usersRepository.update({ id }, { password })
     return user
   }
-  async updateUserInfo(id: string, newUser: CreateUserDto) {
-    const user = await this.usersRepository.update({ id }, newUser)
-    return user
-  }
 
   //change user info
 
-  async changeuserinfo(dto: ChangeUserInfoDto, userId: string) {
+  async changeuserinfo(dto: ChangeUserInfoDto, avatar:Express.Multer.File, userId: string) {
     // Нельзя сохранять пустые данные если были не пустые
     const user = await this.usersRepository.findOne({ where: { id: userId } })
 
@@ -53,11 +51,18 @@ export class UsersService {
       console.error('auth/changeuserinfo/service user is undefined');
       throw new UnauthorizedException('Неопознаный пользователь')
     }
+
+    let uploadResult = {url:"", public_id:""}
+    if (avatar) {
+      uploadResult = await uploadImageToCloudinary(avatar);
+    }
+
     const newUser = {
       username: dto.username ? dto.username : user.username,
       location: dto.location ? dto.location : user.location,
       phone: dto.phone ? dto.phone : user.phone,
-      avatar: dto.avatar ? dto.avatar : user.avatar,
+      avatar_url: uploadResult.url ? uploadResult.url : user.avatar_url,
+      avatar_public_id: uploadResult.public_id ? uploadResult.public_id : user.avatar_public_id,
     }
 
     await this.usersRepository.update(userId, newUser)
