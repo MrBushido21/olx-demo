@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UnauthorizedException, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ListingsService } from './listings.service';
 import type {Response, Request } from 'express';
 import { CreateListingDto } from '../dto/createlisting.dto';
 import { getUserId } from '@app/common';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { UdpdateLikeDto } from '../dto/updateLike.dto';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('listings')
 export class ListingsController {
@@ -56,12 +57,18 @@ export class ListingsController {
   //POST
 
   @Post('create')
+  @UseInterceptors(FilesInterceptor('images', 5))
   async createListings(
     @Body() body: CreateListingDto,
-    @Req() req:Request
+    @Req() req:Request,
+    @UploadedFiles() files: Express.Multer.File[]
   ) {
     const userId = getUserId(req)
-    await this.listingsService.postListings(body, userId)
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Должно быть хотя бы одно фото товара')
+    }
+    
+    await this.listingsService.postListings(body, userId, files)
     return 'Обьявление было успешно создано'
   }
 
@@ -70,6 +77,21 @@ export class ListingsController {
     @Body() body:{listing_title:string}
   ) {
     return this.listingsService.matchCategories(body.listing_title)
+  }
+
+  @Post('images-edit')
+  @UseInterceptors(FilesInterceptor('images', 5))
+  async imagesEdit(
+    @Body() body: {
+      action:"add" | "update" | "delete", 
+      listingId:string,
+      imageId?: string
+    },
+    @UploadedFiles() files: Express.Multer.File[],
+    @Req() req:Request
+  ) {
+    const userId = getUserId(req)
+    return await this.listingsService.imagesEdit(body.action, files, userId, body.listingId, body.imageId)
   }
 
   //PUT

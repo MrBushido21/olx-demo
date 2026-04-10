@@ -1,3 +1,4 @@
+import { Transform } from "class-transformer";
 import { IsIn, IsNotEmpty, IsNumber, IsObject, IsString, MinLength } from "class-validator";
 
 export class CreateListingDto {
@@ -19,9 +20,16 @@ export class CreateListingDto {
     @IsNotEmpty({message: 'Укажите категорию'})
     listing_category:string
 
-    @IsObject()
-    @IsNotEmpty({message: 'Заполните атрибуты'})
-    listing_atributes: Record<string, any>; // гибкие поля
+    @Transform(({ value }) => {
+    try {
+      return typeof value === 'string' ? JSON.parse(value) : value;
+    } catch {
+      return value;
+    }
+  })
+  @IsObject()
+  @IsNotEmpty({message: 'Заполните поля атрибутов'})
+  listing_atributes: Record<string, any>;
 
     @IsString()
     @IsNotEmpty({message: 'Укажите ваше имя'})

@@ -1,17 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "apps/casino/src",
+  "sourceRoot": "apps/olx/src",
   "compilerOptions": {
     "deleteOutDir": true,
     "plugins": [
       "@nestjs/swagger"
     ],
     "webpack": true,
-    "tsConfigPath": "apps/casino/tsconfig.app.json"
+    "tsConfigPath": "apps/olx/tsconfig.app.json"
   },
   "monorepo": true,
-  "root": "apps/casino",
+  "root": "apps/olx",
   "projects": {
     "auth": {
       "type": "application",
@@ -23,13 +23,13 @@
         "webpack": true
       }
     },
-    "casino": {
+    "olx": {
       "type": "application",
-      "root": "apps/casino",
+      "root": "apps/olx",
       "entryFile": "main",
-      "sourceRoot": "apps/casino/src",
+      "sourceRoot": "apps/olx/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/casino/tsconfig.app.json"
+        "tsConfigPath": "apps/olx/tsconfig.app.json"
       }
     },
     "common": {

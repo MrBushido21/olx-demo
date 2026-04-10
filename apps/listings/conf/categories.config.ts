@@ -10,6 +10,8 @@ export const CATEGORY_FIELDS = {
       { name: 'price', type: 'number', required: true },
     ],
 
+    //{"condition": "new", "contract_type": "sell", "price": "1000"} 
+
     phones: [
         {name: 'brand', type:'string', required: true},
         { name: 'condition', type: 'enum', values: ['new', 'used'], required: true },

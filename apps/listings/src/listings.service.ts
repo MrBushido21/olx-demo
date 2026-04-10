@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Listings } from '../entities/listings.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -7,9 +7,12 @@ import { CreateListingDto } from '../dto/createlisting.dto';
 import { getExpiredAt } from '@app/common';
 import { CATEGORY_FIELDS } from '../conf/categories.config';
 import { CATEGORY_KEYWORDS } from '../conf/categoryKeywords.config';
-import { checkAtributes } from '../utils/utils';
+import { checkAtributes, uploadImages } from '../utils/utils';
 import { GetListingsQueryParams } from '../dto/getListingsQueryParams.dto';
 import { UdpdateLikeDto } from '../dto/updateLike.dto';
+import { deleteImageFromCloudinary, uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
+import { error } from 'console';
+import { UploadApiResponse } from 'cloudinary';
 
 @Injectable()
 export class ListingsService {
@@ -21,17 +24,39 @@ export class ListingsService {
     private listingsImagesRepository: Repository<ListingImages>
   ) { }
 
+  //Утилитные методы
+
+  //Првоеряем что обьявление принедлежит пользователю
+  async isUserListing(userId: string, id: string) {
+    const oldListing = await this.listingsRepository.findOne({ where: { userId, id } })
+    if (!oldListing) {
+      throw new UnauthorizedException('Вы не имеете права редактировать чужие обьявления')
+    }
+  }
+
+  //Сохраняем в БД изображения
+  async saveListingsImages(uploaded: UploadApiResponse[], listingId: string) {
+    await Promise.all(
+      uploaded.map(image => this.listingsImagesRepository.save({
+        imageUrl: image.url, imageKey:
+          image.public_id, listingId
+      }))
+    )
+  }
+
   //GET
-  async getListings(userId: string, page:number, params?:GetListingsQueryParams) {
+
+  //Получение обьявлений
+  async getListings(userId: string, page: number, params?: GetListingsQueryParams) {
     const active = params?.hidden || 'active'
     const query = this.listingsRepository
-    .createQueryBuilder('l')
-    .where('l.userId = :userId AND l.active = :active', {userId, active})
+      .createQueryBuilder('l')
+      .where('l.userId = :userId AND l.active = :active', { userId, active })
     if (params?.query) {
       query.andWhere('similarity(LOWER(l.listing_title), LOWER(:query)) > 0.2', { query: params.query })
     }
     if (params?.category && params?.category !== 'all') {
-      query.andWhere('l.listing_category = :category', {category: params.category})
+      query.andWhere('l.listing_category = :category', { category: params.category })
     }
     //Сортировать по алфовиту название
     //Сортировать по дате публикации
@@ -42,11 +67,11 @@ export class ListingsService {
         query.orderBy('l.listing_title', order)
         break;
       case 'created':
-      query.orderBy('l.created_at', order)
-         break;
+        query.orderBy('l.created_at', order)
+        break;
       case 'price':
-      query.orderBy("CAST(l.listing_atributes->>'price' AS NUMERIC)", order)
-       break;
+        query.orderBy("CAST(l.listing_atributes->>'price' AS NUMERIC)", order)
+        break;
       default:
         query.orderBy('l.listing_title', 'ASC')
         break;
@@ -55,29 +80,92 @@ export class ListingsService {
     return query.skip((Number(page) - 1) * 20).take(20).getManyAndCount()
   }
 
+  //Получение 1 обьявления
   async getListing(id: string) {
-    await this.listingsRepository.increment({id}, 'views', 1)
+    await this.listingsRepository.increment({ id }, 'views', 1)
     return await this.listingsRepository.findOne({ where: { id } })
   }
 
- async getMyCategories(userId: string) {                                                                
+
+  //Получение свои категорий публикаций
+  async getMyCategories(userId: string) {
     return this.listingsRepository
       .createQueryBuilder('l')
       .select('DISTINCT l.listing_category', 'category')
-      .where('l.userId = :userId', {userId})
+      .where('l.userId = :userId', { userId })
       .getRawMany()
   }
 
   //POST
-  async postListings(dto: CreateListingDto, userId: string) {
+
+  //Создаине обьявления
+  async postListings(dto: CreateListingDto, userId: string, files: Express.Multer.File[]) {
     //Проверка на все атрибуты
     checkAtributes(dto)
+    //Загружаем изображения
+    const uploaded = await uploadImages(files)
+
     const listing = this.listingsRepository.create(dto)
     const expired_at = getExpiredAt(30)
-    await this.listingsRepository.save({ ...listing, userId, expired_at })
+    const listingSaved = await this.listingsRepository.save({ ...listing, userId, expired_at })
+    this.saveListingsImages(uploaded, listingSaved.id)
+
     return listing
   }
+  //Редактирование изображений
+  async imagesEdit(action: "add" | "update" | "delete", files: Express.Multer.File[],
+    userId:string, listingId: string, imageId?: string) {
+      //Првоеряем что обьявление принедлежит пользователю
+    await this.isUserListing(userId, listingId)
 
+    if (action === 'add') {
+      //Загружаем изображения
+      const uploaded = await uploadImages(files)
+      await this.saveListingsImages(uploaded, listingId)
+      return "Изображение добавлено"
+    } else if (action === "update" && imageId) {
+      //Проверяем что изображение существует
+      const image = await this.listingsImagesRepository.findOne({ where: { id: imageId } })
+      if (!image) {
+        throw new NotFoundException("Изображение не найдено")
+      }
+
+      //Загружаем новое изображения
+      const uploaded = await uploadImages(files)
+      if (!uploaded) {
+        console.error(error);
+        throw new InternalServerErrorException("Ошибка сервера попробуйте еще раз")
+      }
+      await this.saveListingsImages(uploaded, listingId)
+
+      //Удаляем старое изображение из облака
+      await deleteImageFromCloudinary(image.imageKey)
+
+      //Удаляем старое изображение из БД
+      await this.listingsImagesRepository.delete(imageId)
+
+      return "Изображение изменено"
+    } else if (action === "delete" && imageId) {
+      //Проверяем что изображение существует
+      const image = await this.listingsImagesRepository.findOne({ where: { id: imageId } })
+      if (!image) {
+        console.error(`update image for listing: ${error}`);
+        throw new NotFoundException("Изображение не найдено")
+      }
+
+      //Удаляем старое изображение из облака
+      await deleteImageFromCloudinary(image.imageKey)
+
+      //Удаляем старое изображение из БД
+      await this.listingsImagesRepository.delete(imageId)
+
+      return "Изображение удалено"
+    }
+
+    throw new BadRequestException("Неопознаный action")
+  }
+
+  //Предлогать категорию по названию
   matchCategories(listing_title: string) {
     const title = listing_title.toLowerCase();
     for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
@@ -87,16 +175,11 @@ export class ListingsService {
     }
   }
 
-  //Првоеряем что обьявление принедлежит пользователю
-  async isUserListing(userId:string, id:string) {
-    const oldListing = await this.listingsRepository.findOne({where: {userId, id}})
-    if (!oldListing) {
-      throw new UnauthorizedException('Вы не имеете права редактировать чужие обьявления')
-    }
-  }
 
   //PUT
-  async updateListing(dto:CreateListingDto, userId:string, id:string) {
+
+  //Обновление текстовой части обьявления
+  async updateListing(dto: CreateListingDto, userId: string, id: string) {
     //Проверка на все атрибуты
     checkAtributes(dto)
 
@@ -104,37 +187,43 @@ export class ListingsService {
     await this.isUserListing(userId, id)
 
     const newlisting = this.listingsRepository.create(dto)
-    return await this.listingsRepository.update({id}, newlisting)
+    return await this.listingsRepository.update({ id }, newlisting)
   }
 
   //PATCH
 
-  async hiddenListing(id:string, userId:string) {
+
+  //Скрыть обьявление
+  async hiddenListing(id: string, userId: string) {
     //Првоеряем что обьявление принедлежит пользователю
     await this.isUserListing(userId, id)
-    await this.listingsRepository.update({id}, {active: "hidden"})
+    await this.listingsRepository.update({ id }, { active: "hidden" })
   }
 
-  async activateListing(id:string, userId:string) {
+  //Активировать обьявление
+  async activateListing(id: string, userId: string) {
     //Првоеряем что обьявление принедлежит пользователю
     await this.isUserListing(userId, id)
-    await this.listingsRepository.update({id}, {active: "active"})
+    await this.listingsRepository.update({ id }, { active: "active" })
   }
 
-  async updateLikeListing(dto:UdpdateLikeDto) {
+  //Имзенение количества лайков после добавления публикации в избранное
+  async updateLikeListing(dto: UdpdateLikeDto) {
     if (dto.make === "increment") {
-      await this.listingsRepository.increment({id: dto.listingId}, 'likes', 1)
+      await this.listingsRepository.increment({ id: dto.listingId }, 'likes', 1)
     } else {
-      await this.listingsRepository.decrement({id: dto.listingId}, 'likes', 1)
+      await this.listingsRepository.decrement({ id: dto.listingId }, 'likes', 1)
     }
   }
 
-  
-  
+
+
   //DELETE
-  async deleteListing(id:string, userId:string) {
+
+  //Удаление публикации
+  async deleteListing(id: string, userId: string) {
     //Првоеряем что обьявление принедлежит пользователю
     await this.isUserListing(userId, id)
-    return await this.listingsRepository.delete({id})
+    return await this.listingsRepository.delete({ id })
   }
 }

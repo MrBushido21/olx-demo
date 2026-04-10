@@ -15,7 +15,7 @@ export const mainstart = async (env: any, module: any, route: string, port: numb
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
   SwaggerModule.setup(route, app, documentFactory);
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(new ValidationPipe({ transform: true }));
 
   if (rmqQueue) {
     app.connectMicroservice<MicroserviceOptions>({

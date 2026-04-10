@@ -1,6 +1,6 @@
-CREATE DATABASE nestdb;
-CREATE DATABASE listings_nestdb;
-CREATE DATABASE users_nestdb;
+CREATE DATABASE authdb;
+CREATE DATABASE listingsdb;
+CREATE DATABASE usersdb;
 
-\c listings_nestdb
+\c listingsdb
   CREATE EXTENSION IF NOT EXISTS pg_trgm

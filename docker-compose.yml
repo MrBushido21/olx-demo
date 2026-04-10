@@ -1,5 +1,7 @@
 version: '3.9'
 
+name: olx
+
 services:
   postgres:
     image: postgres:15

@@ -7,17 +7,23 @@ import { Listings } from '../entities/listings.entity';
 import { ListingImages } from '../entities/listingImages.entity';
 import { CheckAuthMiddleware } from 'libs/common/middleware/checkauth.middleware';
 import { TypeOrmModuleConf } from 'libs/common/conf/TypeOrmModule.conf';
+import { MulterModule } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { CloudinaryProvider } from 'libs/common/providers/cloudinary';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRootAsync( TypeOrmModuleConf('LISTINGS_POSTGRES_DB',
+    TypeOrmModule.forRootAsync(TypeOrmModuleConf('LISTINGS_POSTGRES_DB',
       [Listings, ListingImages])
     ),
-    TypeOrmModule.forFeature([Listings, ListingImages])
+    TypeOrmModule.forFeature([Listings, ListingImages]),
+    MulterModule.register({
+      storage: memoryStorage(),
+    }),
   ],
   controllers: [ListingsController],
-  providers: [ListingsService],
+  providers: [ListingsService, CloudinaryProvider],
 })
 export class ListingsModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

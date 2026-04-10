@@ -7,10 +7,9 @@ import { ChangeUserInfoDto } from '../dto/changeuserinfo.dto';
 import { FavoritesEntity } from '../entity/favorites.entity';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
-import { uploadImageToCloudinary } from '../config/cloudinary';
-import { UploadApiResponse } from 'cloudinary';
+import { deleteImageFromCloudinary, uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
 
-@Injectable()
+// @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(Users)
@@ -25,7 +24,7 @@ export class UsersService {
 
   async createUser(dto: CreateUserDto) {
     const user = this.usersRepository.create(dto)
-    await this.usersRepository.save(user)
+    return await this.usersRepository.save(user)
   }
 
   async findByEmail(email: string) {
@@ -53,7 +52,11 @@ export class UsersService {
     }
 
     let uploadResult = {url:"", public_id:""}
-    if (avatar) {
+    if (avatar && user.avatar_public_id === null) {
+      uploadResult = await uploadImageToCloudinary(avatar);
+    } else if (avatar && user.avatar_public_id) {
+      //сначала удаляем изображение из клауднари потом загружаем новое фото
+      await deleteImageFromCloudinary(user.avatar_public_id)
       uploadResult = await uploadImageToCloudinary(avatar);
     }
 
@@ -61,8 +64,8 @@ export class UsersService {
       username: dto.username ? dto.username : user.username,
       location: dto.location ? dto.location : user.location,
       phone: dto.phone ? dto.phone : user.phone,
-      avatar_url: uploadResult.url ? uploadResult.url : user.avatar_url,
-      avatar_public_id: uploadResult.public_id ? uploadResult.public_id : user.avatar_public_id,
+      avatar_url: uploadResult.url || user.avatar_url,
+      avatar_public_id: uploadResult.public_id || user.avatar_public_id,
     }
 
     await this.usersRepository.update(userId, newUser)
