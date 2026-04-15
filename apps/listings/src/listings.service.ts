@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Listings } from '../entities/listings.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +13,8 @@ import { UdpdateLikeDto } from '../dto/updateLike.dto';
 import { deleteImageFromCloudinary, uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
 import { error } from 'console';
 import { UploadApiResponse } from 'cloudinary';
+import { firstValueFrom, timeout } from 'rxjs';
+import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
 export class ListingsService {
@@ -21,7 +23,10 @@ export class ListingsService {
     private listingsRepository: Repository<Listings>,
 
     @InjectRepository(ListingImages)
-    private listingsImagesRepository: Repository<ListingImages>
+    private listingsImagesRepository: Repository<ListingImages>,
+
+   @Inject('LISTINGS_SERVICE')
+    private chatClient: ClientProxy,
   ) { }
 
   //Утилитные методы
@@ -110,8 +115,10 @@ export class ListingsService {
     const listingSaved = await this.listingsRepository.save({ ...listing, userId, expired_at })
     this.saveListingsImages(uploaded, listingSaved.id)
 
-    return listing
+    return listingSaved
   }
+
+  
   //Редактирование изображений
   async imagesEdit(action: "add" | "update" | "delete", files: Express.Multer.File[],
     userId:string, listingId: string, imageId?: string) {
@@ -173,6 +180,17 @@ export class ListingsService {
         return category;
       }
     }
+  }
+
+  //Написать по обьявлению
+  async sendMessage(listingId:string, buyerId:string, sellerId:string) {
+    return await firstValueFrom(
+      this.chatClient.send('chat.created', {
+              listingId,
+              buyerId,
+              sellerId,
+            }).pipe(timeout(5000))
+    )
   }
 
 

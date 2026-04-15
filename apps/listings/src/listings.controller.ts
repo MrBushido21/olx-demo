@@ -94,6 +94,22 @@ export class ListingsController {
     return await this.listingsService.imagesEdit(body.action, files, userId, body.listingId, body.imageId)
   }
 
+@Post(':id/chat')
+  async createChat(@Param('id') listingId: string, @Req() req: Request) {
+    const buyerId = req.user?.id
+    const listing = await this.listingsService.getListing(listingId)
+    const selletId = listing?.userId
+    if (!buyerId) {
+      throw new UnauthorizedException('Вы не авторизованы')
+    } else if (!selletId) {
+      throw new BadRequestException('Не верно указан айди обьявления')
+    }
+
+    const response = await this.listingsService.sendMessage(listingId, buyerId, selletId)
+    
+    return response
+  }
+
   //PUT
 
   @Put(':id')

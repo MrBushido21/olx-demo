@@ -10,6 +10,7 @@ import { TypeOrmModuleConf } from 'libs/common/conf/TypeOrmModule.conf';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CloudinaryProvider } from 'libs/common/providers/cloudinary';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 
 @Module({
   imports: [
@@ -21,6 +22,18 @@ import { CloudinaryProvider } from 'libs/common/providers/cloudinary';
     MulterModule.register({
       storage: memoryStorage(),
     }),
+    ClientsModule.registerAsync([{
+      name: 'LISTINGS_SERVICE',
+      useFactory: (configService: ConfigService) => ({
+        transport: Transport.RMQ,
+        options: {
+          urls: [configService.get<string>('RABBITMQ_URL', '')],
+          queue: 'listings_queue',
+          queueOptions: { durable: true },
+        },
+      }),
+      inject: [ConfigService],
+    }]),
   ],
   controllers: [ListingsController],
   providers: [ListingsService, CloudinaryProvider],

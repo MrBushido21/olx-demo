@@ -9,7 +9,7 @@ import { firstValueFrom, timeout } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
 import { deleteImageFromCloudinary, uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
 
-// @Injectable()
+@Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(Users)

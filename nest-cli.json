@@ -23,13 +23,13 @@
         "webpack": true
       }
     },
-    "olx": {
+    "chats": {
       "type": "application",
-      "root": "apps/olx",
+      "root": "apps/chats",
       "entryFile": "main",
-      "sourceRoot": "apps/olx/src",
+      "sourceRoot": "apps/chats/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/olx/tsconfig.app.json"
+        "tsConfigPath": "apps/chats/tsconfig.app.json"
       }
     },
     "common": {
@@ -48,6 +48,15 @@
       "sourceRoot": "apps/listings/src",
       "compilerOptions": {
         "tsConfigPath": "apps/listings/tsconfig.app.json"
+      }
+    },
+    "olx": {
+      "type": "application",
+      "root": "apps/olx",
+      "entryFile": "main",
+      "sourceRoot": "apps/olx/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/olx/tsconfig.app.json"
       }
     },
     "users": {

@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as crypto from 'crypto';
-import {  Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { comparePassword, createJWT, getExpiredAt, getUserByEmail, hashedPassword } from '../utils/utils';
 import { LoginUserDto } from '../dto/login-user.dto';
@@ -29,6 +29,8 @@ export class AuthService {
 
     @Inject('AUTH_SERVICE')
     private usersClient: ClientProxy,
+
+    private dataSource: DataSource,
   ) { }
 
   //Make shure in user email
@@ -75,16 +77,18 @@ export class AuthService {
         password,
         status: 'active',
         role: 'user',
-      }).pipe(
-      timeout(5000) // 5 секунд и бросает ошибку
+      }).pipe(timeout(5000))
     )
-  )
 
-    await this.verifyRepository.delete(token.id)
     const jwtTokens = createJWT({ id: userId, username: dto.username })
     const expired_at = getExpiredAt(7)
-    await this.refreshRepository.save({ refreshToken: jwtTokens.refresh_token, expired_at, userId })
-    return jwtTokens   
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(UserVerifyCodes, token.id)
+      await manager.save(UserRefreshTokens, { refreshToken: jwtTokens.refresh_token, expired_at, userId })
+    })
+
+    return jwtTokens
   }
 
   //Login
@@ -113,7 +117,7 @@ export class AuthService {
     }
     const token = crypto.randomBytes(32).toString('hex')
     const expired_at = new Date();
-    expired_at.setMinutes(expired_at.getMinutes() + 2);
+    expired_at.setMinutes(expired_at.getMinutes() + 15);
     await this.resetRepository.save({ token, userId: user.id, expired_at })
     return `${env.BASE_URL}auth/resetpassword?token=${token}`
   }

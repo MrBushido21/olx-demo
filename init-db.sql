@@ -1,6 +1,7 @@
 CREATE DATABASE authdb;
 CREATE DATABASE listingsdb;
 CREATE DATABASE usersdb;
+CREATE DATABASE chatsdb;
 
 \c listingsdb
   CREATE EXTENSION IF NOT EXISTS pg_trgm

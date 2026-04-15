@@ -31,14 +31,9 @@ export class CheckAuthMiddleware implements NestMiddleware {
                 return res.status(401).json({ error: 'Token missing' });
             }
 
-            const verified = jwt.verify(token, env.JWT_ACCESS_SECRET);
-            if (verified) {
-                const payload = jwt.decode(token)
-                if (payload && typeof payload !== 'string') {
-                    req.user = { id: payload.id, username: payload.username }
-                }
-                next();
-            }
+            const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as jwt.JwtPayload;
+            req.user = { id: payload.id, username: payload.username }
+            next();
 
         } catch (err) {
             if (err instanceof jwt.TokenExpiredError) {

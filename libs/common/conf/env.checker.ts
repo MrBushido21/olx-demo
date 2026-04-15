@@ -3,9 +3,11 @@ import 'dotenv/config';
 export const envcheker = () => {
     const POSTGRES_DB = process.env.AUTH_POSTGRES_DB
     const LISTINGS_POSTGRES_DB = process.env.LISTINGS_POSTGRES_DB
+    const CHATS_POSTGRES_DB = process.env.CHATS_POSTGRES_DB
     const AUTH_PORT = process.env.AUTH_PORT
     const LISTINGS_PORT = process.env.LISTINGS_PORT
     const USERS_PORT = process.env.USERS_PORT
+    const CHATS_PORT = process.env.CHATS_PORT
 
     const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET
     const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
@@ -46,6 +48,9 @@ export const envcheker = () => {
     if (LISTINGS_POSTGRES_DB === "" || !LISTINGS_POSTGRES_DB) {
         throw new Error("LISTINGS_POSTGRES_DB не задана")
     }
+    if (CHATS_POSTGRES_DB === "" || !CHATS_POSTGRES_DB) {
+        throw new Error("CHATS_POSTGRES_DB не задана")
+    }
     if (AUTH_PORT === "" || !AUTH_PORT) {
         throw new Error("AUTH_PORT не задана")
     }
@@ -54,6 +59,9 @@ export const envcheker = () => {
     }
     if (USERS_PORT === "" || !USERS_PORT) {
         throw new Error("USERS_PORT не задана")
+    }
+    if (CHATS_PORT === "" || !CHATS_PORT) {
+        throw new Error("CHATS_PORT не задана")
     }
 
     const RABBITMQ_URL = process.env.RABBITMQ_URL
@@ -73,6 +81,7 @@ export const envcheker = () => {
         AUTH_PORT,
         LISTINGS_PORT,
         USERS_PORT,
+        CHATS_PORT,
         RABBITMQ_URL
     }
 }

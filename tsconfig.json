@@ -21,7 +21,10 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["jest"],
+    "types": [
+      "jest",
+      "multer"
+    ],
     "paths": {
       "@app/common": [
         "./libs/common/src"
