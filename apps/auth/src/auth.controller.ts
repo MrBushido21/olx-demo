@@ -70,6 +70,16 @@ export class AuthController {
     return res.json({ message: "Пароль успешно обновлен", access_token: tokens.access_token })
   }
 
+  // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+  // POST /auth/test — создаёт юзера + объявление, возвращает { access_token, user, listing }
+  @Post('test')
+  async testCreateUser(
+    @Body() body: { email: string; username: string; password: string }
+  ) {
+    return this.authService.testCreateUser(body)
+  }
+  // =============================================================================
+
   @Delete('logout')
    async logout(@Req() req: Request, @Res() res: Response) {
     const refreshToken = req.cookies['refresh_token']                                                    

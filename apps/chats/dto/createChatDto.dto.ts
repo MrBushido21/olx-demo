@@ -7,4 +7,6 @@ export class CreateChatDto {
     buyerId!: string;
     @IsString()
     sellerId!: string;
+    @IsString()
+    message!: string;
 }

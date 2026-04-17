@@ -4,10 +4,12 @@ import {
   Column,
   CreateDateColumn,
   OneToMany,
+  Unique,
 } from 'typeorm';
 import { MessageEntity } from './message.entity';
 
 @Entity()
+@Unique(['buyerId', 'sellerId', 'listingId'])
 export class ChatsEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

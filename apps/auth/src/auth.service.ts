@@ -30,6 +30,11 @@ export class AuthService {
     @Inject('AUTH_SERVICE')
     private usersClient: ClientProxy,
 
+    // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+    @Inject('LISTINGS_SERVICE')
+    private listingsClient: ClientProxy,
+    // =============================================================================
+
     private dataSource: DataSource,
   ) { }
 
@@ -159,4 +164,43 @@ export class AuthService {
   async logout(refreshToken:string) {
     this.refreshRepository.delete({refreshToken})
   }
+
+  // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+  // Создаёт пользователя + тестовое объявление за один запрос, возвращает access_token
+  async testCreateUser(dto: { email: string; username: string; password: string }) {
+    const hashPass = await hashedPassword(dto.password)
+    const userId = uuidv4()
+
+    // 1. Создаём пользователя через users сервис (auth_queue)
+    const user = await firstValueFrom(
+      this.usersClient.send('user.created', {
+        id: userId,
+        username: dto.username,
+        email: dto.email,
+        password: hashPass,
+        status: 'active',
+        role: 'user',
+      }).pipe(timeout(5000))
+    )
+
+    // 2. Создаём тестовое объявление через listings сервис (users_queue)
+    const listing = await firstValueFrom(
+      this.listingsClient.send('listing.create.test', {
+        userId,
+        username: dto.username,
+      }).pipe(timeout(5000))
+    )
+
+    // 3. Генерируем JWT токены и сохраняем refresh в БД
+    const jwtTokens = createJWT({ id: userId, username: dto.username })
+    const expired_at = getExpiredAt(7)
+    await this.refreshRepository.save({ refreshToken: jwtTokens.refresh_token, expired_at, userId })
+
+    return {
+      access_token: jwtTokens.access_token,
+      user: { id: user.id, username: user.username, email: user.email },
+      listing,
+    }
+  }
+  // =============================================================================
 }

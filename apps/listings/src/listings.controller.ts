@@ -16,6 +16,14 @@ export class ListingsController {
       return this.listingsService.updateLikeListing(data)
   }
 
+  // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+  // Принимает RabbitMQ-сообщение от auth сервиса и создаёт тестовое объявление
+  @MessagePattern('listing.create.test')
+  handleCreateTestListing(@Payload() data: { userId: string; username: string }) {
+    return this.listingsService.createTestListing(data.userId, data.username)
+  }
+  // =============================================================================
+
   //GET
   // GET /listings/my-categories
   @Get('my-categories') 
@@ -95,18 +103,28 @@ export class ListingsController {
   }
 
 @Post(':id/chat')
-  async createChat(@Param('id') listingId: string, @Req() req: Request) {
+  async createChat(
+    @Param('id') listingId: string, 
+    @Req() req: Request,
+    @Body() body: {message: string}
+  ) {
     const buyerId = req.user?.id
     const listing = await this.listingsService.getListing(listingId)
-    const selletId = listing?.userId
+    const sellerId = listing?.userId
+    console.log('message: ' + body?.message );
+    
     if (!buyerId) {
       throw new UnauthorizedException('Вы не авторизованы')
-    } else if (!selletId) {
+    } else if (!sellerId) {
       throw new BadRequestException('Не верно указан айди обьявления')
+    } else if (!body?.message || body?.message === '') {
+      throw new BadRequestException('Напишите сообщение')
     }
 
-    const response = await this.listingsService.sendMessage(listingId, buyerId, selletId)
-    
+    const response = await this.listingsService.sendMessage(listingId, buyerId, sellerId, body.message)
+    if (response !== "Вы не можете написать сами себе") {
+      await this.listingsService.updateChatesListing({listingId, make:'increment', userId: sellerId})
+    }
     return response
   }
 

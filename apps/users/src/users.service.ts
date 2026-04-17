@@ -18,8 +18,11 @@ export class UsersService {
     @InjectRepository(FavoritesEntity)
     private favoritesRepository: Repository<FavoritesEntity>,
 
-     @Inject('USERS_SERVICE')
-      private usersClient: ClientProxy,
+    @Inject('USERS_SERVICE')
+    private usersClient: ClientProxy,
+
+    @Inject('CHATS_SERVICE')
+    private chatsClient: ClientProxy,
   ) { }
 
   async createUser(dto: CreateUserDto) {
@@ -35,6 +38,28 @@ export class UsersService {
     const user = await this.usersRepository.findOne({ where: { id } })
     return user
   }
+  async getMe(id: string) {
+    const user = await this.usersRepository.findOne({ where: { id } })
+    const userInfo = {
+      "username": user?.username,
+      "email": user?.email,
+      "phone": user?.phone,
+      "location": user?.location,
+      "avatar_url": user?.avatar_url,
+      "created_at": user?.created_at
+    }
+    return userInfo
+  }
+  async getMyChats(type: string, userId:string) {
+    const userChats = await firstValueFrom (
+      this.chatsClient.send('chats.users', { userId, type })
+        .pipe(timeout(10000))
+    )
+
+    return userChats
+  }
+
+
   async updatePass(id: string, password: string) {
     const user = await this.usersRepository.update({ id }, { password })
     return user
@@ -42,7 +67,7 @@ export class UsersService {
 
   //change user info
 
-  async changeuserinfo(dto: ChangeUserInfoDto, avatar:Express.Multer.File, userId: string) {
+  async changeuserinfo(dto: ChangeUserInfoDto, avatar: Express.Multer.File, userId: string) {
     // Нельзя сохранять пустые данные если были не пустые
     const user = await this.usersRepository.findOne({ where: { id: userId } })
 
@@ -51,7 +76,7 @@ export class UsersService {
       throw new UnauthorizedException('Неопознаный пользователь')
     }
 
-    let uploadResult = {url:"", public_id:""}
+    let uploadResult = { url: "", public_id: "" }
     if (avatar && user.avatar_public_id === null) {
       uploadResult = await uploadImageToCloudinary(avatar);
     } else if (avatar && user.avatar_public_id) {
@@ -77,14 +102,14 @@ export class UsersService {
       await this.favoritesRepository.delete({ listingId })
       await firstValueFrom(
         this.usersClient.emit('listing.updateLike', { userId, listingId, make: 'decrement' })
-        .pipe(timeout(10000))
+          .pipe(timeout(10000))
       )
       return 0
-      } else {
+    } else {
       await this.favoritesRepository.save({ listingId, userId })
-       await firstValueFrom(
+      await firstValueFrom(
         this.usersClient.emit('listing.updateLike', { userId, listingId, make: 'increment' })
-        .pipe(timeout(10000))
+          .pipe(timeout(10000))
       )
       return 1
     }

@@ -17,18 +17,35 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
       [UserRefreshTokens, UserVerifyCodes, UserResetTokens])
     ),
     TypeOrmModule.forFeature([UserRefreshTokens, UserVerifyCodes, UserResetTokens]),
-    ClientsModule.registerAsync([{
-      name: 'AUTH_SERVICE',
-      useFactory: (configService: ConfigService) => ({
-        transport: Transport.RMQ,
-        options: {
-          urls: [configService.get<string>('RABBITMQ_URL', '')],
-          queue: 'auth_queue',
-          queueOptions: { durable: true },
-        },
-      }),
-      inject: [ConfigService],
-    }]),
+    ClientsModule.registerAsync([
+      {
+        name: 'AUTH_SERVICE',
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [configService.get<string>('RABBITMQ_URL', '')],
+            queue: 'auth_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
+      // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+      // Клиент для общения с listings сервисом (слушает на users_queue)
+      {
+        name: 'LISTINGS_SERVICE',
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [configService.get<string>('RABBITMQ_URL', '')],
+            queue: 'users_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
+      // =============================================================================
+    ]),
   ],
   controllers: [AuthController],
   providers: [AuthService],

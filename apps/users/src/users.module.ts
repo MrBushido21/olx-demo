@@ -28,7 +28,20 @@ import { CloudinaryProvider } from 'libs/common/providers/cloudinary';
             },
           }),
           inject: [ConfigService],
-        }]),
+        },
+        {
+          name: 'CHATS_SERVICE',
+          useFactory: (configService: ConfigService) => ({
+            transport: Transport.RMQ,
+            options: {
+              urls: [configService.get<string>('RABBITMQ_URL', '')],
+              queue: 'listings_queue',
+              queueOptions: { durable: true },
+            },
+          }),
+          inject: [ConfigService],
+        },
+      ]),
     MulterModule.register({
       storage: memoryStorage(),
     }),

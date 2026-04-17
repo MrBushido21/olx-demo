@@ -183,12 +183,13 @@ export class ListingsService {
   }
 
   //Написать по обьявлению
-  async sendMessage(listingId:string, buyerId:string, sellerId:string) {
+  async sendMessage(listingId:string, buyerId:string, sellerId:string, message:string) {
     return await firstValueFrom(
       this.chatClient.send('chat.created', {
               listingId,
               buyerId,
               sellerId,
+              message
             }).pipe(timeout(5000))
     )
   }
@@ -234,7 +235,29 @@ export class ListingsService {
     }
   }
 
+  //Имзенение количества чатов после того как продавцу написали
+  async updateChatesListing(dto: UdpdateLikeDto) {
+    await this.listingsRepository.increment({ id: dto.listingId }, 'chates', 1)
+  }
 
+
+
+  // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
+  // Создаёт тестовое объявление без изображений напрямую в БД
+  async createTestListing(userId: string, username: string) {
+    const testListing = this.listingsRepository.create({
+      listing_title: 'Тестовый смартфон iPhone 15 Pro',
+      listing_decription: 'Это тестовое объявление создано автоматически для тестирования функционала чата в приложении.',
+      listing_location: 'Київ',
+      listing_category: 'phones',
+      listing_atributes: { brand: 'Apple', condition: 'new', diagonal: '6.1', price: '1000' },
+      listing_username: username,
+      userId,
+    })
+    const expired_at = getExpiredAt(30)
+    return await this.listingsRepository.save({ ...testListing, expired_at })
+  }
+  // =============================================================================
 
   //DELETE
 

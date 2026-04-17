@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Post, Put, Req, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { CreateUserDto } from '../dto/create-user.dto';
@@ -26,6 +26,23 @@ export class UsersController {
   @MessagePattern('user.updatePass')
   handleUserUpdatePass(@Payload() data: {id:string, password:string}) {
     return this.usersService.updatePass(data.id, data.password)
+  }
+
+  //GET
+
+  @Get('me')
+  async getMe(@Req() req:Request) {
+    const userId = getUserId(req)
+    return await this.usersService.getMe(userId)
+  }
+
+  @Get('me/chats')
+  async getMyCahts(
+    @Req() req:Request,
+    @Query('type') type: "seller" | "buyer" 
+  ) {
+    const userId = getUserId(req)
+    return await this.usersService.getMyChats(type, userId)
   }
 
   //POST
