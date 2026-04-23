@@ -13,7 +13,7 @@ export class ListingImages {
     @Column()
     imageKey: string
 
-    @ManyToOne(() => Listings, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Listings, (listing) => listing.images, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'listingId' })
     listings: Listings;
 

@@ -6,6 +6,7 @@ import { ChangeUserInfoDto } from '../dto/changeuserinfo.dto';
 import { getUserId } from '@app/common';
 import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { LikeListingDto } from '../dto/like-listing.dto';
 
 @Controller('users')
 export class UsersController {
@@ -45,15 +46,23 @@ export class UsersController {
     return await this.usersService.getMyChats(type, userId)
   }
 
-  //POST
+  @Get('favorites') 
+  getFavorites(
+    @Req() req:Request
+  ) {
+    const userId = getUserId(req)
+    return this.usersService.getFavorites(userId)
+  }
 
+  //POST
+  
   @Post('like')
     async likeListing(
-      @Body('listingId') listingId: string,                                                                          
+      @Body() body: LikeListingDto,
       @Req() req:Request
   ) {
       const userId = getUserId(req)
-      const result = await this.usersService.likeListing(listingId, userId)
+      const result = await this.usersService.likeListing(body.listingId, userId)
       return result ? "Вы добавили в понравившееся" : "Вы убрали из понравившегося"
     }
 
@@ -66,7 +75,6 @@ export class UsersController {
     @Req() req:Request,
     @UploadedFile() file: Express.Multer.File
   ) {
-    console.log(file);
     
     const userId = getUserId(req)
     if (!userId) {

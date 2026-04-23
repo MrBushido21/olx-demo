@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageEntity } from '../entities/message.entity';
 import { ChatsEntity } from '../entities/chat.entity';
 import { CreateChatDto } from '../dto/createChatDto.dto';
+import { uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
 
 @Injectable()
 export class ChatsService {
@@ -12,7 +13,12 @@ export class ChatsService {
     private readonly messageRepo: Repository<MessageEntity>,
     @InjectRepository(ChatsEntity)
     private readonly chatRepo: Repository<ChatsEntity>,
+
   ) { }
+
+  async getMessage(messageId: string) {
+    return await this.messageRepo.findOne({where: {id: messageId}})
+  }
 
   //Достать чат юзера
   async getUserChate(id: string, chatId: string) {
@@ -55,12 +61,40 @@ export class ChatsService {
     return await this.messageRepo.save(msg);
   }
 
-  // Возвращаем последние 50 сообщений
-  async getAll(chatId: string): Promise<MessageEntity[]> {
+  // Возвращаем последние 50 сообщений (текст + фото, фото отличается наличием public_id)
+  async getAll(chatId: string) {
     return await this.messageRepo.find({
       where: { chatId },
       order: { created_at: 'ASC' },
       take: 50,
-    });
+    })
+  }
+
+  async uploadImg(file: Express.Multer.File, userId: string, chatId: string) {
+    // Проверяем что пользователь является участником чата
+    const chat = await this.getUserChate(userId, chatId)
+    if (!chat) {
+      throw new BadRequestException('У вас нет доступа к этому чату')
+    }
+
+    const uploadResult = await uploadImageToCloudinary(file)
+
+    try {
+      // save() возвращает сохранённую запись с id — один запрос вместо двух
+      const saved = await this.messageRepo.save({
+        userId,
+        chatId,
+        url: uploadResult.url,
+        public_id: uploadResult.public_id,
+      })
+      return saved.id
+    } catch (error) {
+      console.error('saved message img in DB error ' + error)
+      throw new InternalServerErrorException('Случилась ошибка при загрузке фото попробуйте еще раз')
+    }
+  }
+
+  async updateMessageContent(messageId: string, content: string) {
+    await this.messageRepo.update({ id: messageId }, { content })
   }
 }

@@ -11,6 +11,10 @@ NestJS монорепозиторий с микросервисной архит
 ```
 Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
                auth_queue            users_queue
+                                                    │ Event
+                                                    ▼
+                                             Chats (3003)
+                                           listings_queue
 ```
 
 | Сервис | Порт | Слушает очередь | БД |
@@ -18,6 +22,7 @@ Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
 | Auth | 3000 | — | `nestdb` |
 | Users | 3002 | `auth_queue` | `users_nestdb` |
 | Listings | 3001 | `users_queue` | `listings_nestdb` |
+| Chats | 3003 | `listings_queue` | `chats_nestdb` |
 
 ---
 
@@ -37,6 +42,7 @@ Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
 | POST | `/auth/reset` | Ссылка для сброса пароля |
 | POST | `/auth/changepassword` | Сменить пароль по токену |
 | DELETE | `/auth/logout` | Выход (удаляет refresh token) |
+| POST | `/auth/test` | **Только для тестов** — создать юзера + объявление, вернуть `access_token` |
 
 **RabbitMQ (отправляет → Users):**
 
@@ -63,6 +69,9 @@ Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
 
 | Метод | Путь | Auth | Описание |
 |-------|------|------|----------|
+| GET | `/users/me` | Да | Получить данные текущего пользователя |
+| GET | `/users/me/chats` | Да | Получить чаты пользователя (query: `type=buyer\|seller`) |
+| GET | `/users/favorites` | Да | Получить все избранные объявления пользователя (с изображениями) |
 | POST | `/users/like` | Да | Добавить/убрать из избранного |
 | PATCH | `/users/changeuserinfo` | Да | Обновить профиль + загрузить аватар (`multipart/form-data`, поле `avatar`) |
 
@@ -86,9 +95,10 @@ Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
 
 **RabbitMQ (отправляет → Listings через `users_queue`):**
 
-| Событие | Описание |
-|---------|----------|
-| `listing.updateLike` | Обновить счётчик лайков (increment/decrement) |
+| Паттерн/Событие | Тип | Описание |
+|---------|-----|----------|
+| `listing.updateLike` | emit | Обновить счётчик лайков (increment/decrement) |
+| `listing.get.favorites` | send | Получить объявления по массиву ID (возвращает с изображениями) |
 
 **Сущности:**
 - `Users` — id, username, email, password, role, status, phone, location, avatar_url, avatar_public_id, created_at
@@ -131,15 +141,63 @@ CRUD объявлений, управление изображениями, по
 - `imageId` — id изображения (нужен для `update` и `delete`)
 - `images` — файлы (нужны для `add` и `update`)
 
+**POST `/listings/:id/chat`** — написать продавцу по объявлению. Тело: `{ message: string }`. Создаёт чат (если не существует) и сохраняет первое сообщение. Требует авторизации покупателя.
+
+**RabbitMQ (отправляет → Chats через `listings_queue`):**
+
+| Паттерн | Описание |
+|---------|----------|
+| `chat.created` | Создать чат + сохранить первое сообщение |
+
 **RabbitMQ (принимает от Users через `users_queue`):**
 
-| Событие | Описание |
-|---------|----------|
-| `listing.updateLike` | Инкремент/декремент поля `likes` |
+| Паттерн/Событие | Тип | Описание |
+|---------|-----|----------|
+| `listing.updateLike` | EventPattern | Инкремент/декремент поля `likes` |
+| `listing.get.favorites` | MessagePattern | Вернуть объявления по массиву ID (с images relation) |
 
 **Сущности:**
 - `Listings` — id, userId, listing_title, listing_decription, listing_location, listing_username, listing_category, listing_atributes (JSONB), active (`active`/`hidden`), listing_phone, views (default 0), likes (default 0), chates (default 0), created_at, expired_at
 - `ListingImages` — id, imageUrl, imageKey, listingId (FK → Listings CASCADE)
+
+---
+
+### Chats (порт 3003)
+
+Чат между покупателем и продавцом. Первое сообщение создаётся через HTTP (от Listings), дальнейшее общение — через WebSocket.
+
+**WebSocket Gateway (тот же порт 3003):**
+
+Подключение: передать `token: Bearer {access_token}` в заголовках handshake. При невалидном токене — соединение немедленно дропается.
+
+| Событие (клиент → сервер) | Тело | Описание |
+|--------------------------|------|----------|
+| `joinRoom` | `{ chatId: string }` | Войти в комнату чата. Проверяет что userId — участник чата. Возвращает событие `history` с последними 50 сообщениями |
+| `sendMessage` | `{ content: string }` | Отправить сообщение. Работает только после `joinRoom`. Пустые сообщения игнорируются |
+| `getMessage` | — | Повторно получить историю сообщений текущей комнаты |
+
+| Событие (сервер → клиент) | Описание |
+|--------------------------|----------|
+| `history` | Массив последних 50 сообщений чата (ASC по дате) |
+| `newMessage` | Новое сообщение в комнате (рассылается всем участникам) |
+| `error` | Ошибка авторизации или доступа |
+
+**HTTP эндпоинты:**
+
+| Метод | Путь | Auth | Описание |
+|-------|------|------|----------|
+| POST | `/chats/upload` | Да | Загрузить изображение в чат (`multipart/form-data`, поле `image`, тело: `chatId`) |
+
+**RabbitMQ (принимает от Listings через `listings_queue`):**
+
+| Паттерн | Описание |
+|---------|----------|
+| `chat.created` | Создать чат (или найти существующий) + сохранить первое сообщение |
+| `chats.users` | Вернуть чаты пользователя по типу (`buyer` / `seller`) |
+
+**Сущности:**
+- `ChatsEntity` — id, listingId, buyerId, sellerId, created_at. Уникальный constraint на `(buyerId, sellerId, listingId)`
+- `MessageEntity` — id, userId, content, chatId (FK → ChatsEntity CASCADE), created_at
 
 ---
 
@@ -178,6 +236,7 @@ CRUD объявлений, управление изображениями, по
 | `nestdb` | Auth | — |
 | `users_nestdb` | Users | — |
 | `listings_nestdb` | Listings | расширение `pg_trgm` |
+| `chats_nestdb` | Chats | — |
 
 ---
 
@@ -195,6 +254,7 @@ CRUD объявлений, управление изображениями, по
 AUTH_PORT=3000
 LISTINGS_PORT=3001
 USERS_PORT=3002
+CHATS_PORT=3003
 
 POSTGRES_USER=oleg
 POSTGRES_PASSWORD=nestpass
@@ -204,6 +264,7 @@ DB_PORT=5432
 AUTH_POSTGRES_DB=nestdb
 LISTINGS_POSTGRES_DB=listings_nestdb
 USERS_POSTGRES_DB=users_nestdb
+CHATS_POSTGRES_DB=chats_nestdb
 
 JWT_ACCESS_SECRET=...
 JWT_REFRESH_SECRET=...
@@ -223,6 +284,7 @@ CLOUDINARY_API_SECRET=...
 - Auth: `http://localhost:3000/auth-api`
 - Users: `http://localhost:3002/users-api`
 - Listings: `http://localhost:3001/listings-api`
+- Chats: нет Swagger (только WebSocket)
 
 ---
 
@@ -247,5 +309,4 @@ npm run build && npm run start:prod
 ## Что не реализовано
 
 - **Refresh token** — нет эндпоинта `POST /auth/refresh` для обновления access_token. При истечении (1ч) пользователь должен логиниться заново
-- **GET /auth/me** — нет эндпоинта для получения данных текущего пользователя
-- **Chat** — поле `chates` в `Listings` есть, но сервис чата не реализован
+- **GET /auth/me** — нет эндпоинта для получения данных текущего пользователя через auth сервис (есть `GET /users/me`)

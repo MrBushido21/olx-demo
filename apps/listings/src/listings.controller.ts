@@ -5,6 +5,9 @@ import { CreateListingDto } from '../dto/createlisting.dto';
 import { getUserId } from '@app/common';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { UdpdateLikeDto } from '../dto/updateLike.dto';
+import { MatchCategoriesDto } from '../dto/match-categories.dto';
+import { ImagesEditDto } from '../dto/images-edit.dto';
+import { SendMessageDto } from '../dto/send-message.dto';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 
 @Controller('listings')
@@ -16,6 +19,10 @@ export class ListingsController {
       return this.listingsService.updateLikeListing(data)
   }
 
+  @MessagePattern('listing.get.favorites')
+  async handleGetMyFavorites(@Payload() data: {listingsIds: string[]}) {
+    return this.listingsService.getMyFavorites(data.listingsIds)
+  }
   // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
   // Принимает RabbitMQ-сообщение от auth сервиса и создаёт тестовое объявление
   @MessagePattern('listing.create.test')
@@ -33,9 +40,10 @@ export class ListingsController {
     const userId = getUserId(req)
     return this.listingsService.getMyCategories(userId)
   }
+
   // GET /listings?category=clothes&page=1&sorted=abc&order='ASC'
-   @Get('my') 
-  getListings(
+   @Get() 
+  getMyListings(
     @Req() req:Request,
     @Query('page') page:string,
     @Query('category') category?:string,
@@ -44,7 +52,7 @@ export class ListingsController {
     @Query('query') query?:string,
     @Query('hidden') hidden?:string,
   ) {
-    const userId = getUserId(req)
+    const userId = req.user?.id ?? ''
     const params = {
       category,
       sortedBy,
@@ -52,7 +60,7 @@ export class ListingsController {
       query,
       hidden: hidden !== undefined ? 'hidden' : ''
     }
-    return this.listingsService.getListings(userId, +page, params)
+    return this.listingsService.getListings(+page, userId, params)
   }
 
   @Get(':id')
@@ -80,9 +88,9 @@ export class ListingsController {
     return 'Обьявление было успешно создано'
   }
 
-  @Post('match-categories') 
+  @Post('match-categories')
   matchCategories(
-    @Body() body:{listing_title:string}
+    @Body() body: MatchCategoriesDto
   ) {
     return this.listingsService.matchCategories(body.listing_title)
   }
@@ -90,11 +98,7 @@ export class ListingsController {
   @Post('images-edit')
   @UseInterceptors(FilesInterceptor('images', 5))
   async imagesEdit(
-    @Body() body: {
-      action:"add" | "update" | "delete", 
-      listingId:string,
-      imageId?: string
-    },
+    @Body() body: ImagesEditDto,
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req:Request
   ) {
@@ -104,9 +108,9 @@ export class ListingsController {
 
 @Post(':id/chat')
   async createChat(
-    @Param('id') listingId: string, 
+    @Param('id') listingId: string,
     @Req() req: Request,
-    @Body() body: {message: string}
+    @Body() body: SendMessageDto
   ) {
     const buyerId = req.user?.id
     const listing = await this.listingsService.getListing(listingId)

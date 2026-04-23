@@ -7,6 +7,7 @@ import {
   Unique,
 } from 'typeorm';
 import { MessageEntity } from './message.entity';
+import { ChatImgEntity } from './chatImages.entity';
 
 @Entity()
 @Unique(['buyerId', 'sellerId', 'listingId'])
@@ -31,4 +32,7 @@ export class ChatsEntity {
 
   @OneToMany(() => MessageEntity, (message) => message.chat, { cascade: true })
   messages!: MessageEntity[];
+
+  @OneToMany(() => ChatImgEntity, (image) => image.chat)
+  images!: ChatImgEntity[]
 }

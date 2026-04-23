@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Listings } from '../entities/listings.entity';
-import { Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ListingImages } from '../entities/listingImages.entity';
 import { CreateListingDto } from '../dto/createlisting.dto';
@@ -51,12 +51,23 @@ export class ListingsService {
 
   //GET
 
+
   //Получение обьявлений
-  async getListings(userId: string, page: number, params?: GetListingsQueryParams) {
+  async getListings(page: number, userId?: string, params?: GetListingsQueryParams) {
     const active = params?.hidden || 'active'
-    const query = this.listingsRepository
+    let query:SelectQueryBuilder<Listings>
+    if (userId && userId !== "") {
+      query = this.listingsRepository
       .createQueryBuilder('l')
+      .leftJoinAndSelect('l.images', 'images')
       .where('l.userId = :userId AND l.active = :active', { userId, active })
+    } else {
+      query = this.listingsRepository
+      .createQueryBuilder('l')
+      .leftJoinAndSelect('l.images', 'images')
+      .where('l.active = :active', { active })
+    }
+    
     if (params?.query) {
       query.andWhere('similarity(LOWER(l.listing_title), LOWER(:query)) > 0.2', { query: params.query })
     }
@@ -99,6 +110,14 @@ export class ListingsService {
       .select('DISTINCT l.listing_category', 'category')
       .where('l.userId = :userId', { userId })
       .getRawMany()
+  }
+
+ async getMyFavorites(listingIds: string[]) {
+    if (!listingIds.length) return [];
+    return this.listingsRepository.find({
+      where: { id: In(listingIds) },
+      relations: {images: true}
+    });
   }
 
   //POST

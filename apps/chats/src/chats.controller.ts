@@ -1,10 +1,14 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ChatsService } from './chats.service';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { CreateChatDto } from '../dto/createChatDto.dto';
+import { UploadChatImageDto } from '../dto/upload-chat-image.dto';
 import { error } from 'console';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { getUserId } from '@app/common';
+import type { Request } from 'express';
 
-@Controller()
+@Controller('chats')
 export class ChatsController {
   constructor(private readonly chatsService: ChatsService) {}
   //MessagePattern
@@ -24,4 +28,15 @@ export class ChatsController {
     return await this.chatsService.getUserChates(data.userId, data.type)
   }
   
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('image'))
+  async uploadImg(
+    @Req() req:Request,
+    @Body() body: UploadChatImageDto,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    const userId = getUserId(req)
+    return await this.chatsService.uploadImg(file, userId, body.chatId)
+  }
 }

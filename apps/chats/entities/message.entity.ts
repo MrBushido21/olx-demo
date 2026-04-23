@@ -17,8 +17,14 @@ export class MessageEntity {
   @Column()
   userId!: string;
 
-  @Column('text')
-  content!: string;
+  @Column({ nullable: true, type: 'text' })
+  content?: string;
+
+  @Column({ nullable: true })
+  url?: string;
+
+  @Column({ nullable: true })
+  public_id?: string;
 
   @CreateDateColumn()
   created_at!: Date

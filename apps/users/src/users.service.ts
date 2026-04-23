@@ -23,6 +23,9 @@ export class UsersService {
 
     @Inject('CHATS_SERVICE')
     private chatsClient: ClientProxy,
+
+    @Inject('LISTINGS_SERVICE')
+    private listingsClient: ClientProxy
   ) { }
 
   async createUser(dto: CreateUserDto) {
@@ -59,6 +62,14 @@ export class UsersService {
     return userChats
   }
 
+
+  async getFavorites(userId:string) {
+    const favorites = await this.favoritesRepository.find({where: {userId}, select: {listingId: true}})
+    const listingsIds = favorites.map(f => f.listingId)
+    return firstValueFrom(
+      this.listingsClient.send('listing.get.favorites', {listingsIds}).pipe(timeout(10000))
+    )
+  }
 
   async updatePass(id: string, password: string) {
     const user = await this.usersRepository.update({ id }, { password })

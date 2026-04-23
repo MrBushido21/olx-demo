@@ -1,7 +1,7 @@
 import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { ChatsService } from "../src/chats.service";
-import { UnauthorizedException, UseGuards } from "@nestjs/common";
+import { NotFoundException, UnauthorizedException, UseGuards } from "@nestjs/common";
 import { JwtPayload } from "jsonwebtoken";
 import { envcheker } from "libs/common/conf/env.checker";
 import jwt from 'jsonwebtoken'
@@ -19,11 +19,13 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
         if (!raw.startsWith('Bearer ')) {
             client.emit('error', { message: 'Unauthorized' })
             client.disconnect()
+            return
         }
 
         try {
             const token = raw.split(' ')[1]
-            jwt.verify(token, env.JWT_ACCESS_SECRET ?? '') as JwtPayload
+            const payload = jwt.verify(token, env.JWT_ACCESS_SECRET ?? '') as JwtPayload
+            client.data.userId = payload.id
             return console.log(`${client.id} has connected}`);
         } catch (error) {
             console.error(error);
@@ -64,7 +66,7 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
 
     @SubscribeMessage('sendMessage')
     async handleMessage(
-        @MessageBody() body: { content: string },
+        @MessageBody() body: { content: string, imageId?: string },
         @ConnectedSocket() client: Socket
     ) {
         console.log(`${client.id} send ${body.content}`);
@@ -73,9 +75,25 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
         const chatId = client.data.chatId
 
         if (!chatId) return
+        if (!body.content?.trim() && !body.imageId) return
 
-        const content = await this.chatService.save(userId, chatId, body.content)
-        this.server.to(chatId).emit('newMessage', content)
+        if (body.imageId) {
+            const image = await this.chatService.getMessage(body.imageId)
+            if (!image) throw new NotFoundException('Изображение не загружено')
+
+            // если клиент прислал текст вместе с фото — сохраняем его в то же сообщение
+            if (body.content?.trim()) {
+                await this.chatService.updateMessageContent(body.imageId, body.content)
+                image.content = body.content
+            }
+
+            this.server.to(chatId).emit('newMessage', image)
+        } else {
+            const content = await this.chatService.save(userId, chatId, body.content)
+            this.server.to(chatId).emit('newMessage', content)
+        }
+
+
     }
 
     @SubscribeMessage('getMessage')

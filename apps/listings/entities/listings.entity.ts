@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { ListingImages } from "./listingImages.entity";
 
 @Entity() 
 @Index(["userId", "active"])
@@ -49,5 +50,9 @@ export class Listings {
 
     @Column()
     expired_at!:Date
+
+    @OneToMany(() => ListingImages, (images) => images.listings)
+    @JoinColumn()
+    images!: ListingImages[]
 }
 
