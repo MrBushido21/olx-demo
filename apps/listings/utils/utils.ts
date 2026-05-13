@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { CATEGORY_FIELDS } from "../conf/categories.config";
 import { CreateListingDto } from "../dto/createlisting.dto";
 import { uploadImageToCloudinary } from "libs/common/conf/cloudinary";
+import { validateImageFiles } from "apps/users/dto/fileValidators";
 
 //Проверяет что все атрибуты для категории соблюдены
 export const checkAtributes = (dto: CreateListingDto) => {
@@ -28,6 +29,7 @@ export const checkAtributes = (dto: CreateListingDto) => {
 
 //Загружаем изображения
 export const uploadImages = async (files:Express.Multer.File[]) => {
+    validateImageFiles(files)
     return await Promise.all(
         files.map(file => uploadImageToCloudinary(file))
     )

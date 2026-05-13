@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString } from "class-validator";
+import { Type } from "class-transformer";
+import { IsIn, IsNumber, IsOptional, IsString } from "class-validator";
 
 export class GetListingsQueryParams {
     @ApiPropertyOptional()
@@ -26,5 +27,18 @@ export class GetListingsQueryParams {
     @IsIn(['ASC', 'DESC'])
     @IsOptional()
     order?:'ASC' | 'DESC'
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsNumber()
+    @Type(() => Number)
+    priceMax?: number
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsNumber()
+    @Type(() => Number)
+    priceMin?: number
+
 
 }

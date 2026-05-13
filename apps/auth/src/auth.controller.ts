@@ -80,9 +80,20 @@ export class AuthController {
   }
   // =============================================================================
 
+  @Post('refresh')
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = req.cookies['refresh_token']
+    const tokens = await this.authService.refresh(refreshToken)
+    res.cookie('refresh_token', tokens.refresh_token, {
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+    return res.json({ access_token: tokens.access_token })
+  }
+
   @Delete('logout')
-   async logout(@Req() req: Request, @Res() res: Response) {
-    const refreshToken = req.cookies['refresh_token']                                                    
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = req.cookies['refresh_token']
     await this.authService.logout(refreshToken)
     res.clearCookie('refresh_token')
     return res.json({ message: 'Выход выполнен' })

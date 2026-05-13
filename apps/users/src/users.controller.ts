@@ -37,6 +37,11 @@ export class UsersController {
     return await this.usersService.getMe(userId)
   }
 
+  @Get(':id')
+  async getPublicProfile(@Param('id') id: string) {
+    return await this.usersService.getPublicProfile(id)
+  }
+
   @Get('me/chats')
   async getMyCahts(
     @Req() req:Request,

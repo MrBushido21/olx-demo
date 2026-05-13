@@ -3,6 +3,9 @@ version: '3.9'
 name: olx
 
 services:
+
+  # ─── Infrastructure ────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:15
     container_name: casino
@@ -15,6 +18,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -25,6 +34,85 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Services ──────────────────────────────────────────────────────────────
+
+  auth:
+    build:
+      context: .
+      args:
+        APP_NAME: auth
+    ports:
+      - "${AUTH_PORT}:${AUTH_PORT}"
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  users:
+    build:
+      context: .
+      args:
+        APP_NAME: users
+    ports:
+      - "${USERS_PORT}:${USERS_PORT}"
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  listings:
+    build:
+      context: .
+      args:
+        APP_NAME: listings
+    ports:
+      - "${LISTINGS_PORT}:${LISTINGS_PORT}"
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chats:
+    build:
+      context: .
+      args:
+        APP_NAME: chats
+    ports:
+      - "${CHATS_PORT}:${CHATS_PORT}"
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -9,6 +9,8 @@ import { UserResetTokens } from '../entities/user-reset.entitty';
 import { CheckAuthMiddleware } from 'libs/common/middleware/checkauth.middleware';
 import { TypeOrmModuleConf } from 'libs/common/conf/TypeOrmModule.conf';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -17,6 +19,10 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
       [UserRefreshTokens, UserVerifyCodes, UserResetTokens])
     ),
     TypeOrmModule.forFeature([UserRefreshTokens, UserVerifyCodes, UserResetTokens]),
+    ThrottlerModule.forRoot([{
+        ttl: 60000,  // окно в миллисекундах (1 минута)
+        limit: 5,    // максимум 5 запросов за это время
+      }]),
     ClientsModule.registerAsync([
       {
         name: 'AUTH_SERVICE',
@@ -48,7 +54,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 
 export class AuthModule implements NestModule { 

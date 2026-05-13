@@ -11,14 +11,18 @@ import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CloudinaryProvider } from 'libs/common/providers/cloudinary';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ReportEntity } from '../entities/listingReport.entity';
+import { ReviewEntity } from '../entities/listingRewie.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(TypeOrmModuleConf('LISTINGS_POSTGRES_DB',
-      [Listings, ListingImages])
+      [Listings, ListingImages, ReportEntity, ReviewEntity])
     ),
-    TypeOrmModule.forFeature([Listings, ListingImages]),
+    TypeOrmModule.forFeature([Listings, ListingImages, ReportEntity,
+      ReviewEntity
+    ]),
     MulterModule.register({
       storage: memoryStorage(),
     }),
@@ -42,6 +46,18 @@ export class ListingsModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(CheckAuthMiddleware)
-      .forRoutes('listings');
+      .forRoutes(
+        { path: 'listings/my', method: RequestMethod.GET },
+        { path: 'listings/my-categories', method: RequestMethod.GET },
+        { path: 'listings/create', method: RequestMethod.POST },
+        { path: 'listings/images-edit', method: RequestMethod.POST },
+        { path: 'listings/:id/chat', method: RequestMethod.POST },
+        { path: 'listings/:id', method: RequestMethod.PUT },
+        { path: 'listings/:id', method: RequestMethod.DELETE },
+        { path: 'listings/:id', method: RequestMethod.PATCH },
+        { path: 'listings/activate/:id', method: RequestMethod.PUT },
+        { path: 'listings/:id/review', method: RequestMethod.POST },
+        { path: 'listings/:id/report', method: RequestMethod.POST },
+      )
   }
 }

@@ -1,254 +1,280 @@
-# OLX-clone — Документация проекта
+# OLX Clone — Project Documentation
 
-## Обзор
+## Overview
 
-NestJS монорепозиторий с микросервисной архитектурой. Сервисы общаются через **RabbitMQ**, хранят данные в **PostgreSQL** (отдельная БД на сервис). Изображения хранятся в **Cloudinary**.
+NestJS monorepo with microservice architecture. Services communicate via **RabbitMQ**, each stores data in its own **PostgreSQL** database. Images are stored in **Cloudinary**.
 
 ---
 
-## Архитектура
+## Architecture
 
 ```
 Auth (3000) ──RPC──► Users (3002) ──Event──► Listings (3001)
                auth_queue            users_queue
-                                                    │ Event
+                                                    │ RPC
                                                     ▼
                                              Chats (3003)
                                            listings_queue
 ```
 
-| Сервис | Порт | Слушает очередь | БД |
-|--------|------|----------------|----|
-| Auth | 3000 | — | `nestdb` |
-| Users | 3002 | `auth_queue` | `users_nestdb` |
-| Listings | 3001 | `users_queue` | `listings_nestdb` |
-| Chats | 3003 | `listings_queue` | `chats_nestdb` |
+| Service  | Port | Listens on queue  | Database          |
+|----------|------|-------------------|-------------------|
+| Auth     | 3000 | —                 | `nestdb`          |
+| Users    | 3002 | `auth_queue`      | `users_nestdb`    |
+| Listings | 3001 | `users_queue`     | `listings_nestdb` |
+| Chats    | 3003 | `listings_queue`  | `chats_nestdb`    |
 
 ---
 
-## Сервисы
+## Services
 
-### Auth (порт 3000)
+### Auth (port 3000)
 
-Регистрация, логин, JWT токены, сброс пароля.
+Registration, login, JWT tokens, password reset.
 
-**Эндпоинты:**
+**Endpoints:**
 
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/auth/register-link` | Отправить ссылку верификации email |
-| POST | `/auth/register` | Зарегистрировать пользователя по токену |
-| POST | `/auth/login` | Вход |
-| POST | `/auth/reset` | Ссылка для сброса пароля |
-| POST | `/auth/changepassword` | Сменить пароль по токену |
-| DELETE | `/auth/logout` | Выход (удаляет refresh token) |
-| POST | `/auth/test` | **Только для тестов** — создать юзера + объявление, вернуть `access_token` |
+| Method | Path                    | Auth | Description                                          |
+|--------|-------------------------|------|------------------------------------------------------|
+| POST   | `/auth/register-link`   | No   | Generate email verification link                     |
+| POST   | `/auth/register`        | No   | Register user by verification token                  |
+| POST   | `/auth/login`           | No   | Login, returns access_token + sets refresh cookie    |
+| POST   | `/auth/refresh`         | No   | Issue new access_token using refresh_token cookie    |
+| POST   | `/auth/reset`           | No   | Generate password reset link                         |
+| POST   | `/auth/changepassword`  | No   | Change password by reset token                       |
+| DELETE | `/auth/logout`          | No   | Logout, deletes refresh token, clears cookie         |
+| POST   | `/auth/test`            | No   | **TEST ONLY** — create user + listing, return token  |
 
-**RabbitMQ (отправляет → Users):**
+**Token flow:**
+- `access_token` — JWT, expires in 1 hour, returned in response body
+- `refresh_token` — JWT, expires in 7 days, stored in `httpOnly` cookie and in DB
+- `POST /auth/refresh` — reads cookie, verifies against DB, issues new pair
 
-| Паттерн | Описание |
-|---------|----------|
-| `user.created` | Создать пользователя |
-| `user.findByEmail` | Найти по email |
-| `user.findById` | Найти по ID |
-| `user.updatePass` | Обновить пароль |
-| `user.updateUserInfo` | Обновить данные |
+**Email sending (MVP stub):**
+> `POST /auth/register-link` and `POST /auth/reset` currently return the link as a string in the response body.
+> The email sending code is written but commented out in `auth.service.ts`.
+> To enable: install `nodemailer`, add SMTP env vars, uncomment the `sendEmail` calls.
 
-**Сущности:**
-- `UserRefreshTokens` — refresh токены
-- `UserVerifyCodes` — токены верификации email
-- `UserResetTokens` — токены сброса пароля
+**RabbitMQ — sends to Users via `auth_queue`:**
+
+| Pattern             | Description              |
+|---------------------|--------------------------|
+| `user.created`      | Create user              |
+| `user.findByEmail`  | Find user by email       |
+| `user.findById`     | Find user by ID          |
+| `user.updatePass`   | Update password          |
+
+**Entities:**
+- `UserRefreshTokens` — refresh tokens
+- `UserVerifyCodes` — email verification tokens
+- `UserResetTokens` — password reset tokens
 
 ---
 
-### Users (порт 3002)
+### Users (port 3002)
 
-Профили пользователей, избранное, загрузка аватара.
+User profiles, favorites, avatar upload.
 
-**Эндпоинты:**
+**Endpoints:**
 
-| Метод | Путь | Auth | Описание |
-|-------|------|------|----------|
-| GET | `/users/me` | Да | Получить данные текущего пользователя |
-| GET | `/users/me/chats` | Да | Получить чаты пользователя (query: `type=buyer\|seller`) |
-| GET | `/users/favorites` | Да | Получить все избранные объявления пользователя (с изображениями) |
-| POST | `/users/like` | Да | Добавить/убрать из избранного |
-| PATCH | `/users/changeuserinfo` | Да | Обновить профиль + загрузить аватар (`multipart/form-data`, поле `avatar`) |
+| Method | Path                     | Auth | Description                                          |
+|--------|--------------------------|------|------------------------------------------------------|
+| GET    | `/users/me`              | Yes  | Get current user profile                             |
+| GET    | `/users/:id`             | No   | Get public seller profile (id, username, location, avatar, created_at) |
+| GET    | `/users/me/chats`        | Yes  | Get user chats (`?type=buyer\|seller`)               |
+| GET    | `/users/favorites`       | Yes  | Get all favorited listings (with images)             |
+| POST   | `/users/like`            | Yes  | Toggle listing favorite (add / remove)               |
+| PATCH  | `/users/changeuserinfo`  | Yes  | Update profile + upload avatar (`multipart/form-data`, field `avatar`) |
 
-**PATCH `/users/changeuserinfo` — тело запроса:**
-- `username` — новое имя
-- `location` — местоположение
-- `phone` — телефон
-- `avatar` — файл изображения (опционально, `multipart/form-data`)
+**PATCH `/users/changeuserinfo` body:**
+- `username` — new display name
+- `location` — location string
+- `phone` — phone number
+- `avatar` — image file (optional, `multipart/form-data`)
 
-> При наличии `avatar`: если у пользователя уже был аватар — старый удаляется из Cloudinary и заменяется новым.
+> If a new avatar is uploaded and the user already has one, the old image is deleted from Cloudinary before uploading the new one.
 
-**RabbitMQ (принимает от Auth через `auth_queue`):**
+**RabbitMQ — receives from Auth via `auth_queue`:**
 
-| Паттерн | Описание |
-|---------|----------|
-| `user.created` | Создать пользователя |
-| `user.findByEmail` | Найти по email |
-| `user.findById` | Найти по ID |
-| `user.updatePass` | Обновить пароль |
-| `user.updateUserInfo` | Обновить данные |
+| Pattern             | Description              |
+|---------------------|--------------------------|
+| `user.created`      | Create user              |
+| `user.findByEmail`  | Find user by email       |
+| `user.findById`     | Find user by ID          |
+| `user.updatePass`   | Update password          |
 
-**RabbitMQ (отправляет → Listings через `users_queue`):**
+**RabbitMQ — sends to Listings via `users_queue`:**
 
-| Паттерн/Событие | Тип | Описание |
-|---------|-----|----------|
-| `listing.updateLike` | emit | Обновить счётчик лайков (increment/decrement) |
-| `listing.get.favorites` | send | Получить объявления по массиву ID (возвращает с изображениями) |
+| Pattern / Event          | Type  | Description                                        |
+|--------------------------|-------|----------------------------------------------------|
+| `listing.updateLike`     | emit  | Increment / decrement likes counter                |
+| `listing.get.favorites`  | send  | Get listings by array of IDs (returns with images) |
 
-**Сущности:**
+**Entities:**
 - `Users` — id, username, email, password, role, status, phone, location, avatar_url, avatar_public_id, created_at
 - `FavoritesEntity` — id, listingId, userId (FK → Users CASCADE), created_at
 
 ---
 
-### Listings (порт 3001)
+### Listings (port 3001)
 
-CRUD объявлений, управление изображениями, поиск, категории.
+CRUD listings, image management, search, categories.
 
-**Эндпоинты:**
+**Endpoints:**
 
-| Метод | Путь | Auth | Описание |
-|-------|------|------|----------|
-| GET | `/listings/my-categories` | Да | Уникальные категории объявлений пользователя |
-| GET | `/listings/my` | Да | Объявления пользователя (пагинация, фильтры) |
-| GET | `/listings/:id` | Нет | Одно объявление (увеличивает `views`) |
-| POST | `/listings/create` | Да | Создать объявление + загрузить изображения |
-| POST | `/listings/match-categories` | Нет | Подобрать категорию по заголовку |
-| POST | `/listings/images-edit` | Да | Добавить / обновить / удалить изображение объявления |
-| PUT | `/listings/:id` | Да | Обновить текстовую часть объявления |
-| PATCH | `/listings/hidden/:id` | Да | Скрыть объявление |
-| PUT | `/listings/activate/:id` | Да | Активировать скрытое объявление |
-| DELETE | `/listings/:id` | Да | Удалить объявление |
+| Method | Path                        | Auth | Description                                          |
+|--------|-----------------------------|------|------------------------------------------------------|
+| GET    | `/listings`                 | No   | Browse all active listings (pagination, filters)     |
+| GET    | `/listings/my`              | Yes  | Current user's own listings (supports hidden filter) |
+| GET    | `/listings/my-categories`   | Yes  | Unique categories of current user's listings         |
+| GET    | `/listings/:id`             | No   | Single listing (increments `views`)                  |
+| POST   | `/listings/create`          | Yes  | Create listing + upload images                       |
+| POST   | `/listings/match-categories`| No   | Suggest category by listing title                    |
+| POST   | `/listings/images-edit`     | Yes  | Add / update / delete listing image                  |
+| POST   | `/listings/:id/chat`        | Yes  | Send first message to seller (creates chat)          |
+| POST   | `/listings/:id/report`      | Yes  | Report a listing (reason must be a valid value)      |
+| POST   | `/listings/:id/review`      | Yes  | Leave a review (one per user, cannot review own listing) |
+| PUT    | `/listings/:id`             | Yes  | Update listing text content                          |
+| PUT    | `/listings/activate/:id`    | Yes  | Re-activate a hidden listing                         |
+| PATCH  | `/listings/hidden/:id`      | Yes  | Hide a listing                                       |
+| DELETE | `/listings/:id`             | Yes  | Delete listing                                       |
 
-**Query параметры GET `/listings/my`:**
-- `page` — страница (20 на страницу)
-- `category` — фильтр по категории
+**Query params for `GET /listings` and `GET /listings/my`:**
+- `page` — page number (20 per page)
+- `category` — filter by category
 - `sorted` — `abc` | `created` | `price`
 - `order` — `ASC` | `DESC`
-- `query` — полнотекстовый поиск (pg_trgm similarity > 0.2)
-- `hidden` — если передан (любое значение) — вернуть скрытые объявления
+- `query` — full-text search (pg_trgm similarity > 0.2)
+- `priceMin` — minimum price (filters on `listing_atributes->>'price'`)
+- `priceMax` — maximum price
+- `hidden` — (`/listings/my` only) if present, returns hidden listings instead of active
 
-**POST `/listings/create`** — `multipart/form-data`, поле `images` (до 5 файлов). Объявление создаётся со сроком 30 дней.
+**POST `/listings/create`** — `multipart/form-data`, field `images` (up to 5 files). Listing expires in 30 days.
 
 **POST `/listings/images-edit`** — `multipart/form-data`:
 - `action` — `"add"` | `"update"` | `"delete"`
-- `listingId` — id объявления
-- `imageId` — id изображения (нужен для `update` и `delete`)
-- `images` — файлы (нужны для `add` и `update`)
+- `listingId` — listing id
+- `imageId` — image id (required for `update` and `delete`)
+- `images` — files (required for `add` and `update`)
 
-**POST `/listings/:id/chat`** — написать продавцу по объявлению. Тело: `{ message: string }`. Создаёт чат (если не существует) и сохраняет первое сообщение. Требует авторизации покупателя.
+**RabbitMQ — sends to Chats via `listings_queue`:**
 
-**RabbitMQ (отправляет → Chats через `listings_queue`):**
+| Pattern        | Description                              |
+|----------------|------------------------------------------|
+| `chat.created` | Create chat + save first message         |
 
-| Паттерн | Описание |
-|---------|----------|
-| `chat.created` | Создать чат + сохранить первое сообщение |
+**RabbitMQ — receives from Users via `users_queue`:**
 
-**RabbitMQ (принимает от Users через `users_queue`):**
+| Pattern / Event          | Type          | Description                                        |
+|--------------------------|---------------|----------------------------------------------------|
+| `listing.updateLike`     | EventPattern  | Increment / decrement `likes` field                |
+| `listing.get.favorites`  | MessagePattern| Return listings by array of IDs (with images)      |
 
-| Паттерн/Событие | Тип | Описание |
-|---------|-----|----------|
-| `listing.updateLike` | EventPattern | Инкремент/декремент поля `likes` |
-| `listing.get.favorites` | MessagePattern | Вернуть объявления по массиву ID (с images relation) |
+**Listing expiry:** cron job runs daily at midnight, deactivates listings where `expired_at < NOW()` (sets `active = 'hidden'`). Listings expire 30 days after creation.
 
-**Сущности:**
-- `Listings` — id, userId, listing_title, listing_decription, listing_location, listing_username, listing_category, listing_atributes (JSONB), active (`active`/`hidden`), listing_phone, views (default 0), likes (default 0), chates (default 0), created_at, expired_at
+**Valid report reasons:** `Мошенничество`, `Неправдивые данные о товаре`, `Кража обьявления`
+
+**Entities:**
+- `Listings` — id, userId, listing_title, listing_decription, listing_location, listing_username, listing_category, listing_atributes (JSONB), active (`active`/`hidden`), listing_phone, views, likes, chates, created_at, expired_at
 - `ListingImages` — id, imageUrl, imageKey, listingId (FK → Listings CASCADE)
+- `ReportEntity` — id, listingId, userId, reason, created_at
+- `ReviewEntity` — id, review, userId, listingId (FK → Listings CASCADE), created_at
 
 ---
 
-### Chats (порт 3003)
+### Chats (port 3003)
 
-Чат между покупателем и продавцом. Первое сообщение создаётся через HTTP (от Listings), дальнейшее общение — через WebSocket.
+Real-time chat between buyer and seller. First message is created via HTTP (from Listings service). Subsequent messages go through WebSocket.
 
-**WebSocket Gateway (тот же порт 3003):**
+**WebSocket Gateway (same port 3003):**
 
-Подключение: передать `token: Bearer {access_token}` в заголовках handshake. При невалидном токене — соединение немедленно дропается.
+Connect by passing `token: Bearer {access_token}` in handshake headers. Invalid or expired token disconnects the client immediately.
 
-| Событие (клиент → сервер) | Тело | Описание |
-|--------------------------|------|----------|
-| `joinRoom` | `{ chatId: string }` | Войти в комнату чата. Проверяет что userId — участник чата. Возвращает событие `history` с последними 50 сообщениями |
-| `sendMessage` | `{ content: string }` | Отправить сообщение. Работает только после `joinRoom`. Пустые сообщения игнорируются |
-| `getMessage` | — | Повторно получить историю сообщений текущей комнаты |
+| Event (client → server) | Body                   | Description                                                              |
+|-------------------------|------------------------|--------------------------------------------------------------------------|
+| `joinRoom`              | `{ chatId: string }`   | Join chat room. Verifies userId is a participant. Resets unread counter for current user. Emits `history` with last 50 messages |
+| `sendMessage`           | `{ content: string, imageId?: string }` | Send message. Only works after `joinRoom`. Empty messages ignored |
+| `getMessage`            | —                      | Re-fetch message history for current room                                |
 
-| Событие (сервер → клиент) | Описание |
-|--------------------------|----------|
-| `history` | Массив последних 50 сообщений чата (ASC по дате) |
-| `newMessage` | Новое сообщение в комнате (рассылается всем участникам) |
-| `error` | Ошибка авторизации или доступа |
+| Event (server → client) | Description                                          |
+|-------------------------|------------------------------------------------------|
+| `history`               | Array of last 50 messages (ASC by date)              |
+| `newMessage`            | New message broadcast to all room participants       |
+| `error`                 | Auth or access error                                 |
 
-**HTTP эндпоинты:**
+**HTTP endpoints:**
 
-| Метод | Путь | Auth | Описание |
-|-------|------|------|----------|
-| POST | `/chats/upload` | Да | Загрузить изображение в чат (`multipart/form-data`, поле `image`, тело: `chatId`) |
+| Method | Path            | Auth | Description                                                      |
+|--------|-----------------|------|------------------------------------------------------------------|
+| POST   | `/chats/upload` | Yes  | Upload image to chat (`multipart/form-data`, field `image`, body: `chatId`) |
 
-**RabbitMQ (принимает от Listings через `listings_queue`):**
+**RabbitMQ — receives from Listings via `listings_queue`:**
 
-| Паттерн | Описание |
-|---------|----------|
-| `chat.created` | Создать чат (или найти существующий) + сохранить первое сообщение |
-| `chats.users` | Вернуть чаты пользователя по типу (`buyer` / `seller`) |
+| Pattern       | Description                                                        |
+|---------------|--------------------------------------------------------------------|
+| `chat.created`| Create chat (or find existing) + save first message               |
+| `chats.users` | Return user's chats by type (`buyer` / `seller`)                  |
 
-**Сущности:**
-- `ChatsEntity` — id, listingId, buyerId, sellerId, created_at. Уникальный constraint на `(buyerId, sellerId, listingId)`
-- `MessageEntity` — id, userId, content, chatId (FK → ChatsEntity CASCADE), created_at
+**Unread messages:** `buyerUnread` and `sellerUnread` are tracked separately per chat. On `sendMessage` the recipient's counter increments if they are not currently in the room. On `joinRoom` the current user's counter resets to 0. `GET /users/me/chats` returns the correct `unread` field for the requesting user.
+
+**Entities:**
+- `ChatsEntity` — id, listingId, buyerId, sellerId, buyerUnread, sellerUnread, created_at. Unique constraint on `(buyerId, sellerId, listingId)`
+- `MessageEntity` — id, userId, content, url, public_id, chatId (FK → ChatsEntity CASCADE), created_at
+
+---
+
+## Shared Library (`libs/common`)
+
+| Export                                         | Description                                                  |
+|------------------------------------------------|--------------------------------------------------------------|
+| `mainstart(env, module, route, port, queue?)`  | Start service: HTTP + optional RabbitMQ microservice         |
+| `getUserId(req)`                               | Extract userId from JWT payload, throws 401 if missing       |
+| `getExpiredAt(days)`                           | Returns Date N days from now                                 |
+| `CheckAuthMiddleware`                          | Validates `Authorization: Bearer {token}`, attaches `req.user` |
+| `envcheker()`                                  | Validates all required env vars at startup                   |
+| `TypeOrmModuleConf`                            | TypeORM config factory                                       |
+| `CloudinaryProvider`                           | Cloudinary NestJS provider                                   |
 
 ---
 
 ## Cloudinary
 
-Используется для хранения изображений объявлений и аватаров пользователей.
+Used for storing listing images and user avatars.
 
-| Переменная | Описание |
-|-----------|----------|
-| `CLOUDINARY_CLOUD_NAME` | Имя облака |
-| `CLOUDINARY_API_KEY` | API ключ |
-| `CLOUDINARY_API_SECRET` | API секрет |
+| Variable                 | Description     |
+|--------------------------|-----------------|
+| `CLOUDINARY_CLOUD_NAME`  | Cloud name      |
+| `CLOUDINARY_API_KEY`     | API key         |
+| `CLOUDINARY_API_SECRET`  | API secret      |
 
-**Поведение:**
-- При загрузке нового аватара старый автоматически удаляется из Cloudinary
-- При удалении/обновлении изображения объявления старый файл удаляется из Cloudinary
-- Изображения загружаются через `uploadImageToCloudinary` / `uploadImages` (batch), удаляются через `deleteImageFromCloudinary`
-
----
-
-## Общая библиотека (libs/common)
-
-- **`mainstart(env, module, route, port, rmqQueue?)`** — запуск сервиса (HTTP + опционально микросервис)
-- **`getUserId(req)`** — извлечь userId из JWT (кидает 401 если нет)
-- **`getExpiredAt(days)`** — дата истечения через N дней
-- **`CheckAuthMiddleware`** — проверка `Authorization: Bearer {token}`, добавляет `req.user`
-- **`env.checker`** — валидация переменных окружения
-- **`TypeOrmModule.conf`** — фабрика конфига TypeORM
+**Behavior:**
+- Uploading a new avatar automatically deletes the old one from Cloudinary
+- Updating or deleting a listing image removes the old file from Cloudinary
+- Images are uploaded via `uploadImageToCloudinary` / `uploadImages` (batch), deleted via `deleteImageFromCloudinary`
 
 ---
 
-## Базы данных
+## Databases
 
-| БД | Сервис | Особенности |
-|----|--------|-------------|
-| `nestdb` | Auth | — |
-| `users_nestdb` | Users | — |
-| `listings_nestdb` | Listings | расширение `pg_trgm` |
-| `chats_nestdb` | Chats | — |
+| Database           | Service  | Notes                         |
+|--------------------|----------|-------------------------------|
+| `nestdb`           | Auth     | —                             |
+| `users_nestdb`     | Users    | —                             |
+| `listings_nestdb`  | Listings | requires `pg_trgm` extension  |
+| `chats_nestdb`     | Chats    | —                             |
 
 ---
 
 ## RabbitMQ
 
-- Все очереди **durable**
-- Порт AMQP: 5672 / UI: 15672
-- Credentials: `admin / admin`
+- All queues are **durable**
+- AMQP port: 5672 / Management UI: 15672
+- Credentials from env: `RABBITMQ_USER` / `RABBITMQ_PASSWORD`
+- Management UI: `http://localhost:15672`
 
 ---
 
-## Переменные окружения
+## Environment Variables
 
 ```env
 AUTH_PORT=3000
@@ -270,11 +296,20 @@ JWT_ACCESS_SECRET=...
 JWT_REFRESH_SECRET=...
 
 RABBITMQ_URL=amqp://admin:admin@localhost:5672
+RABBITMQ_USER=admin
+RABBITMQ_PASSWORD=admin
+
 BASE_URL=http://localhost:3000/
 
 CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
+
+# Email (disabled in MVP — see auth.service.ts for implementation)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=your@email.com
+# SMTP_PASS=your_app_password
 ```
 
 ---
@@ -284,29 +319,38 @@ CLOUDINARY_API_SECRET=...
 - Auth: `http://localhost:3000/auth-api`
 - Users: `http://localhost:3002/users-api`
 - Listings: `http://localhost:3001/listings-api`
-- Chats: нет Swagger (только WebSocket)
+- Chats: no Swagger (WebSocket only)
 
 ---
 
-## Запуск
+## Running the Project
 
 ```bash
-# Инфраструктура (PostgreSQL + RabbitMQ)
-docker-compose up -d
+# Infrastructure only (PostgreSQL + RabbitMQ)
+docker-compose up postgres rabbitmq -d
 
-# Пересоздать volumes (при изменении схемы БД)
+# All services via Docker (production-like)
+docker-compose up --build
+
+# Individual services in development (hot reload)
+npm run start:auth
+npm run start:users
+npm run start:listings
+npm run start:chats
+
+# Rebuild all services
+npm run build:auth && npm run build:users && npm run build:listings && npm run build:chats
+
+# Recreate volumes (after schema changes)
 docker-compose down -v && docker-compose up -d
-
-# Разработка
-npm run start:dev
-
-# Продакшн
-npm run build && npm run start:prod
 ```
 
 ---
 
-## Что не реализовано
+## Known gaps
 
-- **Refresh token** — нет эндпоинта `POST /auth/refresh` для обновления access_token. При истечении (1ч) пользователь должен логиниться заново
-- **GET /auth/me** — нет эндпоинта для получения данных текущего пользователя через auth сервис (есть `GET /users/me`)
+| Feature | Notes |
+|---|---|
+| Email sending | Stub commented in `auth.service.ts`. Needs nodemailer + SMTP env vars to enable |
+| Seller rating score | Reviews exist (`ReviewEntity`) but no aggregated average rating calculation |
+| Push / email notifications | No alerts when a message arrives or a listing gets a like |

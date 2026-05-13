@@ -27,6 +27,12 @@ export class ChatsEntity {
   @Column()
   sellerId!: string;
 
+  @Column({default: 0})
+  buyerUnread!: number;
+
+  @Column({default: 0})
+  sellerUnread!: number;
+
   @CreateDateColumn()
   created_at!: Date;
 

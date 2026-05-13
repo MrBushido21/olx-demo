@@ -10,10 +10,28 @@ import { UserVerifyCodes } from '../entities/user-verifycodes.entity';
 import { UserResetTokens } from '../entities/user-reset.entitty';
 import { ChangePassDto } from '../dto/changepass.dto';
 import { env } from 'libs/common/conf/env.checker';
-import { ChangeUserInfoDto } from '../dto/changeuserinfo.dto';
 import { ClientProxy } from '@nestjs/microservices';
 import { v4 as uuidv4 } from 'uuid';
 import { firstValueFrom, timeout } from 'rxjs';
+import jwt from 'jsonwebtoken';
+
+// ─── Email sending (MVP stub) ─────────────────────────────────────────────────
+// To enable real email delivery, install nodemailer:
+//   npm install nodemailer @types/nodemailer
+// Add to .env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+//
+// import nodemailer from 'nodemailer';
+//
+// const transporter = nodemailer.createTransport({
+//   host: process.env.SMTP_HOST,
+//   port: Number(process.env.SMTP_PORT),
+//   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+// });
+//
+// async function sendEmail(to: string, subject: string, html: string) {
+//   await transporter.sendMail({ from: process.env.SMTP_USER, to, subject, html });
+// }
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class AuthService {
@@ -38,26 +56,25 @@ export class AuthService {
     private dataSource: DataSource,
   ) { }
 
-  //Make shure in user email
   async registerLink(email: string) {
-    //Првоеряем что емейл не зарегистрирован уже
     const user = await getUserByEmail(email, this.usersClient)
-    // const user = await this.authRepository.findOne({ where: { email } })
     const vatify_email = await this.verifyRepository.findOne({ where: { user_email: email } })
     if (user || vatify_email) {
       throw new ConflictException('Пользователь с таким емейлом уже существует');
     }
-    //Создаем токен для поддтверждения емейла
     const token = crypto.randomBytes(32).toString('hex')
     const expired_at = getExpiredAt(7)
-    //Сохраняем емейл и токен для поддтверждения подлености ссылки и емейл для регистрации
     await this.verifyRepository.save({ token, user_email: email, expired_at })
-    return `${env.BASE_URL}auth/register?token=${token}`
+
+    const link = `${env.BASE_URL}auth/register?token=${token}`
+
+    // When email is enabled, replace the return below with:
+    // await sendEmail(email, 'Confirm your registration', `<a href="${link}">Confirm email</a>`);
+    // return 'Confirmation link sent to your email';
+    return link
   }
 
-  //Registration
   async register(dto: CreateUserDto) {
-    //Ишем токен для поодтвеждаюищй что ссылка была действительна
     const token = await this.verifyRepository.findOne(
       {
         where: { token: dto.token },
@@ -67,7 +84,6 @@ export class AuthService {
     if (!token) {
       throw new BadRequestException('Неверная ссылка')
     }
-
     if (token.expired_at < new Date()) {
       throw new BadRequestException('Ссылка устарела')
     }
@@ -96,15 +112,13 @@ export class AuthService {
     return jwtTokens
   }
 
-  //Login
   async login(dto: LoginUserDto) {
-    const user = await getUserByEmail(dto.email, this.usersClient) 
+    const user = await getUserByEmail(dto.email, this.usersClient)
     if (!user) {
       throw new UnauthorizedException('Неправильный логин или пароль')
     }
-    const isMath = await comparePassword(dto.password, user.password)
-
-    if (!isMath) {
+    const isMatch = await comparePassword(dto.password, user.password)
+    if (!isMatch) {
       throw new UnauthorizedException('Неправильный логин или пароль')
     }
 
@@ -114,8 +128,8 @@ export class AuthService {
     await this.refreshRepository.save({ refreshToken: jwtTokens.refresh_token, expired_at, userId: user.id })
     return jwtTokens
   }
-  //ResetPass
-   async reset(email: string) {
+
+  async reset(email: string) {
     const user = await getUserByEmail(email, this.usersClient)
     if (!user) {
       return
@@ -124,54 +138,86 @@ export class AuthService {
     const expired_at = new Date();
     expired_at.setMinutes(expired_at.getMinutes() + 15);
     await this.resetRepository.save({ token, userId: user.id, expired_at })
-    return `${env.BASE_URL}auth/resetpassword?token=${token}`
+
+    const link = `${env.BASE_URL}auth/resetpassword?token=${token}`
+
+    // When email is enabled, replace the return below with:
+    // await sendEmail(email, 'Password reset', `<a href="${link}">Reset password</a>`);
+    // return 'Password reset link sent to your email';
+    return link
   }
 
-  //ChangePass
   async changepass(dto: ChangePassDto) {
     const token = await this.resetRepository.findOne({ where: { token: dto.token }, order: { created_at: 'DESC' } })
 
     if (!token) {
-      throw new NotFoundException("Текен не найдено")
+      throw new NotFoundException('Token not found')
     } else if (token.expired_at < new Date()) {
       throw new BadRequestException('Ссылка устарела')
     }
 
     const hashPass = await hashedPassword(dto.password)
 
-     const user = await firstValueFrom(
-      this.usersClient.send('user.findById', {id: token.userId}).pipe(timeout(10000))
+    const user = await firstValueFrom(
+      this.usersClient.send('user.findById', { id: token.userId }).pipe(timeout(10000))
     )
     if (!user) {
       console.error(`userID ${token.userId} не найден соотвествующий юзер`);
-      throw new InternalServerErrorException("Чтото пошло не так")
+      throw new InternalServerErrorException('Чтото пошло не так')
     }
 
     await firstValueFrom(
-      this.usersClient.send('user.updatePass', {id: token.userId, password: hashPass}).pipe(timeout(10000))
+      this.usersClient.send('user.updatePass', { id: token.userId, password: hashPass }).pipe(timeout(10000))
     )
-    const userInfo = { id: user.id, username: user.username }
-    const jwtTokens = createJWT(userInfo)
+    const jwtTokens = createJWT({ id: user.id, username: user.username })
 
-    await this.refreshRepository.delete({ userId: user.id })
-    await this.resetRepository.delete({ userId: user.id })
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(UserRefreshTokens, { userId: user.id })
+      await manager.delete(UserResetTokens, { userId: user.id })
+      const expired_at = getExpiredAt(7)
+      await manager.save(UserRefreshTokens, { refreshToken: jwtTokens.refresh_token, userId: user.id, expired_at })
+    })
 
-    const expired_at = getExpiredAt(7)
-    await this.refreshRepository.save({ refreshToken: jwtTokens.refresh_token, userId: user.id, expired_at: expired_at })
     return jwtTokens
   }
 
-  async logout(refreshToken:string) {
-    this.refreshRepository.delete({refreshToken})
+  async refresh(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing')
+    }
+
+    const stored = await this.refreshRepository.findOne({ where: { refreshToken } })
+    if (!stored || stored.expired_at < new Date()) {
+      throw new UnauthorizedException('Refresh token is invalid or expired')
+    }
+
+    let payload: { id: string; username: string }
+    try {
+      payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { id: string; username: string }
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token')
+    }
+
+    const newTokens = createJWT({ id: payload.id, username: payload.username })
+    const expired_at = getExpiredAt(7)
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(UserRefreshTokens, { refreshToken })
+      await manager.save(UserRefreshTokens, { refreshToken: newTokens.refresh_token, expired_at, userId: payload.id })
+    })
+
+    return newTokens
+  }
+
+  async logout(refreshToken: string) {
+    await this.refreshRepository.delete({ refreshToken })
   }
 
   // =================== TEST ONLY — УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ ===================
-  // Создаёт пользователя + тестовое объявление за один запрос, возвращает access_token
   async testCreateUser(dto: { email: string; username: string; password: string }) {
     const hashPass = await hashedPassword(dto.password)
     const userId = uuidv4()
 
-    // 1. Создаём пользователя через users сервис (auth_queue)
     const user = await firstValueFrom(
       this.usersClient.send('user.created', {
         id: userId,
@@ -183,7 +229,6 @@ export class AuthService {
       }).pipe(timeout(5000))
     )
 
-    // 2. Создаём тестовое объявление через listings сервис (users_queue)
     const listing = await firstValueFrom(
       this.listingsClient.send('listing.create.test', {
         userId,
@@ -191,7 +236,6 @@ export class AuthService {
       }).pipe(timeout(5000))
     )
 
-    // 3. Генерируем JWT токены и сохраняем refresh в БД
     const jwtTokens = createJWT({ id: userId, username: dto.username })
     const expired_at = getExpiredAt(7)
     await this.refreshRepository.save({ refreshToken: jwtTokens.refresh_token, expired_at, userId })

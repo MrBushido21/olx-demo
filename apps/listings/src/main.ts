@@ -7,4 +7,4 @@ const env = envcheker();
 async function bootstrap() {
   await mainstart(env, ListingsModule, 'listings-api', +env.LISTINGS_PORT, 'users_queue')
 }
-bootstrap();;
+bootstrap();

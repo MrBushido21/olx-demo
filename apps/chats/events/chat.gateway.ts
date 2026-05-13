@@ -12,6 +12,7 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server!: Server
 
+    private activeUsers = new Map<string, string>()
     constructor(private readonly chatService: ChatsService) { }
 
     handleConnection(client: Socket) {
@@ -42,6 +43,7 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     handleDisconnect(client: Socket) {
+        this.activeUsers.delete(client.data.userId)
         console.log(`${client.id} has disconnected}`);
     }
 
@@ -58,10 +60,14 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
             throw new UnauthorizedException('У вас нет доступа в этот чат')
         }
         await client.join(body.chatId)
+        
+        this.activeUsers.set(userId, chatId)
+        this.chatService.decrUnread(chatId, userId)
         client.data.chatId = chatId
         const messages = await this.chatService.getAll(body.chatId)
 
         client.emit('history', messages)
+
     }
 
     @SubscribeMessage('sendMessage')
@@ -76,6 +82,13 @@ export class ChatGateWay implements OnGatewayConnection, OnGatewayDisconnect {
 
         if (!chatId) return
         if (!body.content?.trim() && !body.imageId) return
+
+        const chat = await this.chatService.getUserChate(userId, chatId)
+        const recipientId = chat!.buyerId === userId ? chat!.sellerId : chat!.buyerId
+
+        if (this.activeUsers.get(recipientId) !== chatId) {
+            await this.chatService.incrUnread(chatId, userId)
+        }
 
         if (body.imageId) {
             const image = await this.chatService.getMessage(body.imageId)

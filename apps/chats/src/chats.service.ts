@@ -1,10 +1,12 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageEntity } from '../entities/message.entity';
 import { ChatsEntity } from '../entities/chat.entity';
 import { CreateChatDto } from '../dto/createChatDto.dto';
 import { uploadImageToCloudinary } from 'libs/common/conf/cloudinary';
+import { validateImageFile } from 'apps/users/dto/fileValidators';
+import { NotFoundError } from 'rxjs';
 
 @Injectable()
 export class ChatsService {
@@ -31,13 +33,13 @@ export class ChatsService {
   }
   //Достать чаты юзера
   async getUserChates(id: string, type: "seller" | "buyer") {
-    if (type === 'buyer') {
-      return await this.chatRepo.find({ where: { buyerId: id } })
-    } else if (type === 'seller') {
-      return await this.chatRepo.find({ where: { sellerId: id } })
-    } else {
-      return 'Тип чатов не определен'
-    }
+    const chats = await this.chatRepo.find({
+      where: type === 'buyer' ? { buyerId: id } : { sellerId: id }
+    })
+    return chats.map(chat => ({
+      ...chat,
+      unread: type === 'buyer' ? chat.buyerUnread : chat.sellerUnread,
+    }))
   }
 
   //Создаем чат
@@ -77,6 +79,7 @@ export class ChatsService {
       throw new BadRequestException('У вас нет доступа к этому чату')
     }
 
+    validateImageFile(file)
     const uploadResult = await uploadImageToCloudinary(file)
 
     try {
@@ -96,5 +99,24 @@ export class ChatsService {
 
   async updateMessageContent(messageId: string, content: string) {
     await this.messageRepo.update({ id: messageId }, { content })
+  }
+
+  async incrUnread(chatId:string, senderId:string) {
+    const chat = await this.chatRepo.findOne({ where: { id: chatId } })
+    if (!chat) throw new NotFoundException('Чайт не найден')
+    if (senderId === chat.buyerId) {
+      await this.chatRepo.increment({ id: chatId }, 'sellerUnread', 1)
+    } else {
+      await this.chatRepo.increment({ id: chatId }, 'buyerUnread', 1)
+    }
+  }
+  async decrUnread(chatId: string, userId: string) {
+    const chat = await this.chatRepo.findOne({ where: { id: chatId } })
+    if (!chat) throw new NotFoundException('Чат не найден')
+    if (userId === chat.buyerId) {
+      await this.chatRepo.update({ id: chatId }, { buyerUnread: 0 })
+    } else {
+      await this.chatRepo.update({ id: chatId }, { sellerUnread: 0 })
+    }
   }
 }

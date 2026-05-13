@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { ListingImages } from "./listingImages.entity";
+import { ReviewEntity } from "./listingRewie.entity";
 
 @Entity() 
 @Index(["userId", "active"])
@@ -54,5 +55,9 @@ export class Listings {
     @OneToMany(() => ListingImages, (images) => images.listings)
     @JoinColumn()
     images!: ListingImages[]
+
+    @OneToMany(() => ReviewEntity, (rewies) => rewies.listings)
+    @JoinColumn()
+    rewies!: ReviewEntity[]
 }
 

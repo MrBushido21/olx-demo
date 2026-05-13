@@ -65,7 +65,12 @@ export class UsersModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(CheckAuthMiddleware)
-      .forRoutes('users');
-      // .forRoutes({ path: 'users/changeuserinfo', method: RequestMethod.PATCH });
+      .forRoutes(
+        { path: 'users/me', method: RequestMethod.GET },
+        { path: 'users/me/chats', method: RequestMethod.GET },
+        { path: 'users/favorites', method: RequestMethod.GET },
+        { path: 'users/like', method: RequestMethod.POST },
+        { path: 'users/changeuserinfo', method: RequestMethod.PATCH },
+      )
   }
 }
